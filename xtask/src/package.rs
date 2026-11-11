@@ -332,18 +332,35 @@ mod tests {
             .ok_or("Missing root")?;
         let shim = tempdir()?;
         let cases = [
-            ("Linux", "x86_64", "0", "", TARGETS[0]),
-            ("Linux", "aarch64", "0", "", TARGETS[1]),
-            ("Darwin", "x86_64", "0", "", TARGETS[2]),
-            ("Darwin", "arm64", "1", "", TARGETS[3]),
-            ("Darwin", "x86_64", "1", "", TARGETS[3]),
-            ("MINGW64_NT-10.0", "x86_64", "0", "", TARGETS[4]),
-            ("MINGW64_NT-10.0", "aarch64", "0", "", TARGETS[5]),
-            ("MINGW64_NT-10.0", "x86_64", "0", "ARM64", TARGETS[5]),
-            ("Linux", "unsupported", "0", "", ""),
-            ("unsupported", "x86_64", "0", "", ""),
+            ("Linux", "x86_64", "0", "", "", TARGETS[0]),
+            ("Linux", "aarch64", "0", "", "", TARGETS[1]),
+            ("Darwin", "x86_64", "0", "", "", TARGETS[2]),
+            ("Darwin", "arm64", "1", "", "", TARGETS[3]),
+            ("Darwin", "x86_64", "1", "", "", TARGETS[3]),
+            ("MINGW64_NT-10.0", "x86_64", "0", "", "", TARGETS[4]),
+            ("MINGW64_NT-10.0", "aarch64", "0", "", "", TARGETS[5]),
+            ("MINGW64_NT-10.0", "x86_64", "0", "ARM64", "", TARGETS[5]),
+            (
+                "MINGW64_NT-10.0",
+                "x86_64",
+                "0",
+                "AMD64",
+                "Arm64",
+                TARGETS[5],
+            ),
+            ("MINGW64_NT-10.0", "x86_64", "0", "", "X64", TARGETS[4]),
+            ("MINGW64_NT-10.0", "x86_64", "0", "", "X86", ""),
+            ("Linux", "unsupported", "0", "", "", ""),
+            ("unsupported", "x86_64", "0", "", "", ""),
         ];
-        for (os, arch, apple_arm, windows_native, expected) in cases {
+        for (os, arch, apple_arm, windows_native, powershell_arch, expected) in cases {
+            fs::write(
+                shim.path().join("pwsh"),
+                format!(
+                    "#!/bin/sh\n[ -n '{powershell_arch}' ] || exit 1\nprintf '%s\\r\\n' '{powershell_arch}'\n"
+                ),
+            )?;
+            fs::set_permissions(shim.path().join("pwsh"), fs::Permissions::from_mode(0o755))?;
             fs::write(
                 shim.path().join("sysctl"),
                 format!("#!/bin/sh\nprintf '{apple_arm}\\n'\n"),
