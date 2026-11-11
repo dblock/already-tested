@@ -1,0 +1,78 @@
+name: Lint
+on:
+  push:
+    branches: [master]
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+jobs:
+  lint:
+    name: Format, Clippy, and Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Out Source
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Check Local CI Claim
+        id: local
+        uses: ./
+        with:
+          check: lint
+      - name: Set Up Rust
+        if: steps.local.outputs.skip != 'true'
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: 1.99.1
+          components: clippy,rustfmt
+      - name: Cache Rust Dependencies
+        if: steps.local.outputs.skip != 'true'
+        uses: Swatinem/rust-cache@v2.9.3
+        with:
+          shared-key: lint
+      - name: Check Rust Formatting
+        if: steps.local.outputs.skip != 'true'
+        run: cargo fmt --all -- --check
+      - name: Run Clippy
+        if: steps.local.outputs.skip != 'true'
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - name: Check Documentation and Shell Scripts
+        if: steps.local.outputs.skip != 'true'
+        run: cargo xtask docs
+  dylint:
+    name: Dylint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Out Source
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Check Local CI Claim
+        id: local
+        uses: ./
+        with:
+          check: dylint
+      - name: Set Up Rust
+        if: steps.local.outputs.skip != 'true'
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: 1.99.1
+      - name: Cache Rust Dependencies
+        if: steps.local.outputs.skip != 'true'
+        uses: Swatinem/rust-cache@v2.9.3
+        with:
+          shared-key: dylint
+      - name: Install Dylint
+        if: steps.local.outputs.skip != 'true'
+        run: cargo install --locked cargo-dylint dylint-link --version 6.2.0
+      - name: Run Dylint
+        if: steps.local.outputs.skip != 'true'
+        env:
+          DYLINT_RUSTFLAGS: -D warnings
+        run: cargo dylint --all --fail-on-no-libraries -- --locked --workspace --all-targets --all-features

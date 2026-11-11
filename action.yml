@@ -1,0 +1,32 @@
+name: Already Tested
+description: Skip duplicate CI using trusted, content-matched local-test claims.
+author: dblock
+inputs:
+  check:
+    description: Distinct check or matrix environment identifier.
+    required: true
+  files:
+    description: Newline-separated Git pathspecs; defaults to all tracked files plus the workflow.
+    required: false
+  version:
+    description: Binary release version; defaults to the version of this Action.
+    default: v0.1.0
+    required: false
+outputs:
+  skip:
+    description: Whether the claim matches the selected source and executing workflow.
+    value: ${{ steps.verify.outputs.skip }}
+runs:
+  using: composite
+  steps:
+    - name: Verify Local CI Claim
+      id: verify
+      shell: bash
+      env:
+        INPUT_CHECK: ${{ inputs.check }}
+        INPUT_FILES: ${{ inputs.files }}
+        INPUT_VERSION: ${{ inputs.version }}
+      run: sh "$GITHUB_ACTION_PATH/scripts/action.sh"
+branding:
+  icon: check-circle
+  color: green

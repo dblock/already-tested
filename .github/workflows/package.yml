@@ -1,0 +1,66 @@
+name: Package
+on:
+  push:
+    branches: [master]
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+jobs:
+  package:
+    name: Package ${{ matrix.entry.target }}
+    runs-on: ${{ matrix.entry.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        entry:
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-musl }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl }
+          - { os: macos-26-intel, target: x86_64-apple-darwin }
+          - { os: macos-latest, target: aarch64-apple-darwin }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc }
+          - { os: windows-11-arm, target: aarch64-pc-windows-msvc }
+    steps:
+      - name: Check Out Source
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Check Local CI Claim
+        id: local
+        uses: ./
+        with:
+          check: package-${{ matrix.entry.target }}
+      - name: Set Up Rust
+        if: steps.local.outputs.skip != 'true'
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: 1.99.1
+          targets: ${{ matrix.entry.target }}
+      - name: Cache Rust Dependencies
+        if: steps.local.outputs.skip != 'true'
+        uses: Swatinem/rust-cache@v2.9.3
+        with:
+          shared-key: package-${{ matrix.entry.target }}
+      - name: Install Linux Static Linker
+        if: steps.local.outputs.skip != 'true' && runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Validate Archive and Installed Consumer
+        if: steps.local.outputs.skip != 'true'
+        run: cargo xtask package --target ${{ matrix.entry.target }}
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '11.0'
+      - name: Validate Crate
+        if: steps.local.outputs.skip != 'true' && matrix.entry.target == 'x86_64-unknown-linux-musl'
+        run: cargo package --locked --allow-dirty
+      - name: Upload Platform Binary
+        if: steps.local.outputs.skip != 'true'
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: binary-${{ matrix.entry.target }}
+          path: pkg/*
+          if-no-files-found: error

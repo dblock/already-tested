@@ -1,0 +1,3 @@
+[dylint-spellcheck]
+include = ["*.md"]
+dictionaries = ["crate:dylint-spellcheck/data/en", ".spellcheck.txt"]

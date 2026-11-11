@@ -1,0 +1,10 @@
+/target/
+/coverage/
+/lcov.info
+/pkg/
+*.crate
+.DS_Store
+.env
+.env.*
+.spellcheck.tmp
+.spellcheck.tmp.lock
