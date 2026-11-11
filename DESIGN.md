@@ -87,6 +87,8 @@ Linux uses musl static linking; Windows statically links the MSVC runtime. macOS
 
 Each archive contains the executable and MIT license, with an adjacent `.sha256` file. Installers verify SHA-256 and executable version before replacing an existing install. These checks detect corruption, not an untrusted release publisher.
 
+Each GitHub Release also includes `install.sh` and `install.ps1` as downloadable assets. Use versioned URLs and version arguments to pin both the installer and binary.
+
 POSIX installation accepts `--version v0.1.0`, `--bin-dir PATH`, and `--print-target`; Windows accepts `-Version`, `-BinDir`, and `-PrintTarget`. Defaults: latest release and `~/.local/bin`. They do not modify shell profiles. Ordinary use requires Git; installation uses OS shell, HTTPS download, archive, and checksum facilities.
 
 For a mirror or local archive test, set `ALREADY_TESTED_DOWNLOAD_BASE_URL` to an HTTPS directory or `file://` URL containing the archive and checksum. Other schemes are rejected; empty overrides use defaults. POSIX also accepts `ALREADY_TESTED_VERSION` and `ALREADY_TESTED_BIN_DIR`.
@@ -94,7 +96,7 @@ For a mirror or local archive test, set `ALREADY_TESTED_DOWNLOAD_BASE_URL` to an
 For example, pin a CLI version or change its destination:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/dblock/already-tested/master/scripts/install.sh \
+curl -fsSL https://github.com/dblock/already-tested/releases/download/v0.1.0/install.sh \
   | sh -s -- --version v0.1.0 --bin-dir "$HOME/.local/bin"
 ```
 

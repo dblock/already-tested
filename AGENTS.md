@@ -18,7 +18,7 @@ Before every development push, run `cargo test --locked --workspace --all-target
 
 Use `cargo llvm-cov --locked --workspace --all-targets --summary-only` to inspect coverage. Follow [setup and test conventions](CONTRIBUTING.md#setup-and-validation), including verified current stable tools, separate Test/Coverage/Lint/Package workflows, explicit `matrix.entry` lists, and parallel Coveralls reporting.
 
-Keep all six platform binaries, automatic native selection, HTTPS/checksum verification, and failure-safe replacement. Preserve CLI/claim/Action contracts across distribution changes. Do not claim cross-platform validation from only one local host; native CI validates other archives.
+Keep all six platform binaries and both installer scripts in every GitHub Release. Preserve automatic native selection, HTTPS/checksum verification, failure-safe replacement, and CLI/claim/Action contracts across distribution changes. Do not claim cross-platform validation from only one local host; native CI validates other archives.
 
 Follow [local claim mappings](CONTRIBUTING.md#local-ci-claims). Claim only complete checks actually run in the correct OS/CPU, with honest command/environment metadata. Use all tracked files; regenerate after changes. Paste default disclosures adjacent without outer bullets or blank separators, with canonical comments hidden inline.
 
