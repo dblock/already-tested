@@ -13,7 +13,9 @@ cargo xtask package
 
 Dylint is this repository's default framework for additional lint rules. CLI tools 6.4.0 fix driver builds after the Clippy default branch changed; the general-purpose suite and [dylint-spellcheck](https://github.com/dblock/dylint-spellcheck) remain independently pinned. Dylint provisions their nightly compiler without changing normal builds. `cargo xtask lint` runs formatting, Clippy, document checks, and all configured Dylint libraries, failing on warnings. Spelling covers Rust comments and root Markdown documents; review `.spellcheck.txt` vocabulary instead of accepting genuine typos.
 
-The Dylint CI job installs checksum-verified upstream binaries and caches the tools, nightly compiler, driver, and built lint libraries. Its cache key covers platform, manifests, `Cargo.lock`, toolchain, and workflow configuration. It does not cache lint results; Dylint still checks each revision.
+`cargo xtask setup-dylint` installs checksum-verified Dylint 6.4.0 binaries into Cargo's bin directory using curl and tar. It supports hosts with published upstream binaries; use the source installation above on other hosts. Both archives are checked before replacing installed tools.
+
+The Dylint CI job calls this task on a cache miss and caches the tools, nightly compiler, driver, and built lint libraries. Its cache key covers platform, manifests, `Cargo.lock`, toolchain, setup task, and workflow configuration. It does not cache lint results; Dylint still checks each revision.
 
 CI follows [excalc-rs](https://github.com/dblock/excalc-rs): separate Test, Coverage, Lint, and Package workflows, with separate formatting/Clippy/document and Dylint jobs in Lint. Dylint runs `cargo dylint --all --fail-on-no-libraries -- --locked --workspace --all-targets --all-features` with `DYLINT_RUSTFLAGS="-D warnings"`; structural Markdown/YAML and shell checks remain in `cargo xtask docs` where these libraries have no equivalent. There are no optional application features, so duplicate feature-mode runs are unnecessary.
 
@@ -26,6 +28,8 @@ For coverage, install `cargo-llvm-cov` 0.9.1 and the toolchain's `llvm-tools-pre
 ## Tests
 
 Core tests use isolated real Git repositories, actual CLI/Action processes, SHA-1/SHA-256 object formats, and committed protocol conformance fixtures. Node is not required by tests. Maintenance tests cover heading/paragraph rules, YAML names, and platform selection. Package checks install real checksummed archives and test installed CLI/Action behavior.
+
+Release tests use rust-crate-release's `GitProject` and `ReleaseFixture` to copy the actual source, run its metadata hook through the real engine, and inspect released/development files in a disposable remote. Fixture validation uses a focused Cargo check; the outer suite runs full validation. Only native GitHub asset operations need a small local command fixture for interrupted uploads, retries, modified assets, and source/checksum mismatches. Dylint setup tests use real local archives and checksums, including rejected downloads preserving installed tools. Never test against live credentials or publish from validation.
 
 Keep Test, Coverage, Lint, and Package workflows separate, with explicit `matrix.entry` lists of compact inline objects, no generated axes or include/exclude. Coverage runs on Linux, macOS, and Windows and completes parallel Coveralls reporting; it always runs in CI so local claims cannot substitute for uploaded coverage. Prefer verified current stable tools while preserving supported targets.
 
@@ -56,4 +60,4 @@ Include `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>` i
 
 After local validation, report pending CI without waiting. After authorized merges, prune-fetch, verify the GitHub merge, clean worktrees, and lack of unmerged work/dependents; switch to `master` and remove clean task-owned worktrees/merged branches. Never delete dirty worktrees, active PR branches, or `master`.
 
-Follow [versioning rules](AGENTS.md#versioning-and-releases) and [Releasing](RELEASING.md). Document released breaking changes, including `0.x`, in `UPGRADING.md` and link it from README.
+Follow [versioning rules](AGENTS.md#versioning-and-releases) and [Releasing](RELEASING.md). The explicitly authorized standard release workflow publishes to crates.io and pushes validated release/development commits; it requires separately approved release-identity protection configuration. Normal development remains PR-only. Document released breaking changes, including `0.x`, in `UPGRADING.md` and link it from README.

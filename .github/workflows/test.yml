@@ -26,10 +26,17 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
+      - name: Read Released Verifier Version
+        id: verifier
+        shell: bash
+        run: |
+          version=$(cat .github/ci-version)
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
       - name: Check Local CI Claim
         id: local
         uses: ./
         with:
+          version: ${{ steps.verifier.outputs.version }}
           check: test-${{ matrix.entry.os }}
       - name: Set Up Rust
         if: steps.local.outputs.skip != 'true'

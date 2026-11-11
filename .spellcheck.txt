@@ -5,11 +5,13 @@ Clippy
 Dylint
 Dylint's
 HTTPS
+Intridea
 JSON
 LF
 MSVC
 MiB
 NUL
+OIDC
 POSIX
 PRs
 PowerShell

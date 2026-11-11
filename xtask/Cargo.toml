@@ -5,10 +5,15 @@ edition = "2024"
 publish = false
 
 [dependencies]
+regex = "1.13.1"
+semver = "1.0.28"
 serde_json = "1.0.154"
 sha2 = "0.11.1"
 tempfile = "3.27.0"
 yaml-rust2 = "0.13.0"
+
+[dev-dependencies]
+rust-crate-release = "=0.1.1"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(dylint_lib, values("general"))'] }

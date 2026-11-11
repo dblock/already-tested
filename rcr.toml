@@ -1,0 +1,8 @@
+changelog-format = "intridea"
+next-version = "0.2.0"
+bump-command = ["cargo", "xtask", "release-metadata"]
+validation = [
+    ["cargo", "test", "--locked", "--workspace", "--all-targets"],
+    ["cargo", "xtask", "lint"],
+    ["cargo", "xtask", "package"],
+]

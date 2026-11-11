@@ -1,5 +1,7 @@
 mod checks;
 mod package;
+mod release;
+mod setup;
 
 use std::env;
 use std::fs;
@@ -32,6 +34,9 @@ fn documents(root: &Path) -> Result<()> {
         }
     }
     checks::yaml_names(&fs::read_to_string(root.join("action.yml"))?)?;
+    checks::yaml_names(&fs::read_to_string(
+        root.join(".github/actions/setup-dylint/action.yml"),
+    )?)?;
     if !cfg!(windows) {
         run("sh", &["-n", "scripts/install.sh"], root)?;
         run("sh", &["-n", "scripts/action.sh"], root)?;
@@ -106,7 +111,17 @@ fn execute() -> Result<()> {
             };
             package::build(root, target)?;
         }
-        _ => return Err("Usage: cargo xtask lint | docs | package [--target TARGET]".into()),
+        Some("release-metadata") if args.len() == 1 => release::execute()?,
+        Some("setup-dylint") if args.len() == 1 => setup::dylint()?,
+        Some("publish-native-assets") if args.len() == 1 => {
+            release::publish_native_assets(&env::current_dir()?)?;
+        }
+        _ => {
+            return Err(
+                "Usage: cargo xtask lint | docs | package [--target TARGET] | setup-dylint | release-metadata | publish-native-assets"
+                    .into(),
+            );
+        }
     }
     Ok(())
 }
