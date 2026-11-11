@@ -1,0 +1,174 @@
+{
+  "provenance": "Generated with the unchanged already-tested-js src/claims.js using Node 26. No Node runtime is used by Rust tests.",
+  "workflow": ".github/workflows/test \"é\".yaml",
+  "check": "unit:linux/x",
+  "files": [
+    {
+      "path": ".github/workflows/test \"é\".yaml",
+      "mode": "100644",
+      "bytes": [
+        110,
+        97,
+        109,
+        101,
+        58,
+        32,
+        84,
+        101,
+        115,
+        116,
+        10,
+        111,
+        110,
+        58,
+        32,
+        112,
+        117,
+        115,
+        104,
+        10,
+        106,
+        111,
+        98,
+        115,
+        58,
+        32,
+        123,
+        125,
+        10
+      ]
+    },
+    {
+      "path": "src/𐀀",
+      "mode": "100644",
+      "bytes": [
+        0,
+        10,
+        255,
+        13,
+        128
+      ]
+    },
+    {
+      "path": "src/",
+      "mode": "100755",
+      "bytes": [
+        113,
+        117,
+        111,
+        116,
+        101,
+        115,
+        34,
+        92,
+        9,
+        226,
+        128,
+        168,
+        226,
+        128,
+        169,
+        10
+      ]
+    },
+    {
+      "path": "src/line\n\"tab\t\\file",
+      "mode": "100644",
+      "bytes": [
+        98,
+        99
+      ]
+    },
+    {
+      "path": "src/a",
+      "mode": "100644",
+      "bytes": [
+        100
+      ]
+    },
+    {
+      "path": "src/empty",
+      "mode": "100644",
+      "bytes": []
+    },
+    {
+      "path": "README.md",
+      "mode": "100644",
+      "bytes": [
+        35,
+        32,
+        70,
+        105,
+        120,
+        116,
+        117,
+        114,
+        101,
+        10
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "name": "all-files",
+      "patterns": [],
+      "claim": "<!-- already-tested:v1 {\"workflow\":\".github/workflows/test \\\"é\\\".yaml\",\"check\":\"unit:linux/x\",\"hash\":\"sha256:bcfb498c2b26360f6157eca0d47128e3835fcc453e7d0bc5937a42cd3883fcfd\"} -->"
+    },
+    {
+      "name": "pattern-policy",
+      "patterns": [
+        "﻿ src/** ﻿",
+        "src/",
+        "src/𐀀",
+        "src/**"
+      ],
+      "claim": "<!-- already-tested:v1 {\"workflow\":\".github/workflows/test \\\"é\\\".yaml\",\"check\":\"unit:linux/x\",\"hash\":\"sha256:74628b76a055f4702ee5dbb0231082a3bc33bcb2ada123c6497455784458dc3e\"} -->"
+    },
+    {
+      "name": "ecmascript-whitespace",
+      "patterns": [
+        "",
+        "src/**"
+      ],
+      "claim": "<!-- already-tested:v1 {\"workflow\":\".github/workflows/test \\\"é\\\".yaml\",\"check\":\"unit:linux/x\",\"hash\":\"sha256:6ef857012c942d6b458c3932deeefeed1cc57b1e5689a8ad3be19f1481e3f665\"} -->"
+    },
+    {
+      "name": "executing-workflow",
+      "patterns": [
+        "src/**"
+      ],
+      "replacement": {
+        "path": ".github/workflows/test \"é\".yaml",
+        "mode": "100644",
+        "bytes": [
+          110,
+          97,
+          109,
+          101,
+          58,
+          32,
+          69,
+          120,
+          101,
+          99,
+          117,
+          116,
+          105,
+          110,
+          103,
+          32,
+          119,
+          111,
+          114,
+          107,
+          102,
+          108,
+          111,
+          119,
+          10
+        ]
+      },
+      "claim": "<!-- already-tested:v1 {\"workflow\":\".github/workflows/test \\\"é\\\".yaml\",\"check\":\"unit:linux/x\",\"hash\":\"sha256:e2559ae480b6be37360d32be9c7e5e2702fb6e2c55ed416656771fdcae436c67\"} -->"
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a GitHub Release for an existing version tag (requires explicit authorization)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  build:
+    name: Build Release Archives
+    uses: ./.github/workflows/package.yml
+  release:
+    name: Publish Verified Archives
+    if: inputs.publish && github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Check Out Source
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download Exact Archives
+        uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: binary-*
+          merge-multiple: true
+          path: pkg
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -eu
+          test "$(find pkg -name '*.tar.gz' | wc -l)" -eq 6
+          test "$(find pkg -name '*.tar.gz.sha256' | wc -l)" -eq 6
+          (cd pkg && sha256sum --check ./*.sha256)
+          version=$(sed -n 's/^version = "\([^"]*\)"$/\1/p' Cargo.toml | head -n 1)
+          test -n "$version"
+          test "$(gh api "repos/$GH_REPO/commits/refs%2Ftags%2Fv$version" --jq .sha)" = "$GITHUB_SHA"
+          gh release create "v$version" pkg/* --target "$GITHUB_SHA" --title "v$version" --generate-notes --verify-tag

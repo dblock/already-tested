@@ -1,0 +1,879 @@
+use already_tested::{Options, create_claim, verify_claim};
+use serde::Deserialize;
+use std::fs;
+use std::io::Write;
+use std::path::Path;
+use std::process::{Command, Output, Stdio};
+
+const WORKFLOW: &str = ".github/workflows/test.yml";
+
+struct Repo {
+    directory: tempfile::TempDir,
+}
+
+impl Repo {
+    fn empty(format: &str) -> Self {
+        let repo = Self {
+            directory: tempfile::tempdir().unwrap(),
+        };
+        repo.git(&[
+            "init",
+            "-q",
+            "-b",
+            "master",
+            &format!("--object-format={format}"),
+        ]);
+        for (key, value) in [
+            ("user.name", "Test"),
+            ("user.email", "test@example.invalid"),
+            ("commit.gpgsign", "false"),
+            ("core.autocrlf", "false"),
+            ("core.filemode", "false"),
+        ] {
+            repo.git(&["config", key, value]);
+        }
+        repo.git(&[
+            "config",
+            "core.hooksPath",
+            repo.path().join(".git/no-hooks").to_str().unwrap(),
+        ]);
+        repo
+    }
+
+    fn new() -> Self {
+        let repo = Self::empty("sha1");
+        repo.write(WORKFLOW, "name: Test\non: push\njobs: {}\n");
+        repo.write(".github/workflows/other.yml", "name: Other\n");
+        repo.write("src/add.rs", "pub fn add(a: u8, b: u8) -> u8 { a + b }\n");
+        repo.write("README.md", "# Fixture\n");
+        repo.commit();
+        repo
+    }
+
+    fn path(&self) -> &Path {
+        self.directory.path()
+    }
+
+    fn git_bytes(&self, args: &[&str], input: &[u8]) -> Vec<u8> {
+        let mut child = Command::new("git")
+            .args(args)
+            .current_dir(self.path())
+            .env("GIT_NO_REPLACE_OBJECTS", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut stdin = child.stdin.take().unwrap();
+        std::thread::scope(|scope| {
+            scope.spawn(move || {
+                stdin.write_all(input).unwrap();
+            });
+            let output = child.wait_with_output().unwrap();
+            assert!(
+                output.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            output.stdout
+        })
+    }
+
+    fn git(&self, args: &[&str]) -> String {
+        String::from_utf8(self.git_bytes(args, &[]))
+            .unwrap()
+            .trim_end()
+            .into()
+    }
+
+    fn write(&self, path: &str, bytes: impl AsRef<[u8]>) {
+        let path = self.path().join(path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, bytes).unwrap();
+    }
+
+    fn commit(&self) -> String {
+        self.git(&["add", "--all"]);
+        self.git(&["commit", "-qm", "Fixture"]);
+        self.git(&["rev-parse", "HEAD"])
+    }
+
+    fn options(&self) -> Options {
+        Options::new(self.path(), WORKFLOW, "unit")
+    }
+
+    fn claim(&self) -> String {
+        create_claim(&self.options()).unwrap()
+    }
+
+    fn cli(&self, args: &[&str]) -> Output {
+        Command::new(env!("CARGO_BIN_EXE_already-tested"))
+            .args(args)
+            .current_dir(self.path())
+            .output()
+            .unwrap()
+    }
+
+    fn index_file(&self, path: &str, mode: &str, bytes: &[u8]) {
+        let oid =
+            String::from_utf8(self.git_bytes(&["hash-object", "-w", "--stdin"], bytes)).unwrap();
+        self.git_bytes(
+            &["update-index", "-z", "--index-info"],
+            format!("{mode} {}\t{path}\0", oid.trim()).as_bytes(),
+        );
+    }
+
+    fn commit_index(&self) -> String {
+        let tree = self.git(&["write-tree"]);
+        let commit =
+            String::from_utf8(self.git_bytes(&["commit-tree", &tree, "-m", "Fixture"], &[]))
+                .unwrap();
+        self.git(&["update-ref", "HEAD", commit.trim()]);
+        commit.trim().into()
+    }
+
+    fn action(
+        &self,
+        body: serde_json::Value,
+        source: &str,
+        extra: &[(&str, Option<&str>)],
+    ) -> (Output, String) {
+        self.write(
+            ".git/event.json",
+            serde_json::to_vec(&serde_json::json!({
+                "pull_request": { "body": body, "head": { "sha": source } }
+            }))
+            .unwrap(),
+        );
+        self.write(".git/output", "");
+        let mut command = Command::new(env!("CARGO_BIN_EXE_already-tested"));
+        command
+            .arg("action")
+            .current_dir(self.path())
+            .env("GITHUB_EVENT_NAME", "pull_request")
+            .env("GITHUB_EVENT_PATH", self.path().join(".git/event.json"))
+            .env("GITHUB_OUTPUT", self.path().join(".git/output"))
+            .env("GITHUB_WORKSPACE", self.path())
+            .env(
+                "GITHUB_WORKFLOW_REF",
+                format!("owner/project/{WORKFLOW}@refs/pull/1/merge"),
+            )
+            .env("GITHUB_WORKFLOW_SHA", self.git(&["rev-parse", "HEAD"]))
+            .env("INPUT_CHECK", "unit")
+            .env("INPUT_FILES", "");
+        for (name, value) in extra {
+            if let Some(value) = value {
+                command.env(name, value);
+            } else {
+                command.env_remove(name);
+            }
+        }
+        let result = command.output().unwrap();
+        (
+            result,
+            fs::read_to_string(self.path().join(".git/output")).unwrap(),
+        )
+    }
+}
+
+#[derive(Deserialize)]
+struct GoldenFile {
+    path: String,
+    mode: String,
+    bytes: Vec<u8>,
+}
+
+#[derive(Deserialize)]
+struct GoldenCase {
+    name: String,
+    patterns: Vec<String>,
+    replacement: Option<GoldenFile>,
+    claim: String,
+}
+
+#[derive(Deserialize)]
+struct Golden {
+    workflow: String,
+    check: String,
+    files: Vec<GoldenFile>,
+    cases: Vec<GoldenCase>,
+}
+
+#[test]
+fn legacy_v1_golden_bytes_unicode_order_binary_escapes_policy_and_workflow_override() {
+    check_golden(include_str!("fixtures/v1.json"));
+    #[cfg(unix)]
+    check_golden(include_str!("fixtures/v1-unix.json"));
+}
+
+fn check_golden(json: &str) {
+    let golden: Golden = serde_json::from_str(json).unwrap();
+    for format in ["sha1", "sha256"] {
+        for case in &golden.cases {
+            let repo = Repo::empty(format);
+            for file in &golden.files {
+                repo.index_file(&file.path, &file.mode, &file.bytes);
+            }
+            let source = repo.commit_index();
+            let mut options = Options::new(repo.path(), &golden.workflow, &golden.check);
+            options.files = case.patterns.clone();
+            options.r#ref = source;
+            if let Some(file) = &case.replacement {
+                repo.index_file(&file.path, &file.mode, &file.bytes);
+                options.workflow_ref = Some(repo.commit_index());
+            }
+            assert!(
+                verify_claim(Some(&case.claim), &options).unwrap(),
+                "{format}: {}",
+                case.name
+            );
+            let stale = case.claim.replace("sha256:", "sha256:0");
+            assert!(!verify_claim(Some(&stale), &options).unwrap());
+        }
+    }
+}
+
+#[test]
+fn deterministic_claims_ignore_commit_identity_but_bind_content_and_identity() {
+    let repo = Repo::new();
+    let claim = repo.claim();
+    assert_eq!(claim, repo.claim());
+    repo.git(&["commit", "--allow-empty", "-qm", "Same source, new commit"]);
+    assert_eq!(claim, repo.claim());
+    let mut options = repo.options();
+    assert!(verify_claim(Some(&format!("Description\n{claim}\n{claim}")), &options).unwrap());
+    options.check = "lint".into();
+    assert!(!verify_claim(Some(&claim), &options).unwrap());
+    options.workflow = ".github/workflows/other.yml".into();
+    assert!(!verify_claim(Some(&claim), &options).unwrap());
+}
+
+#[test]
+#[cfg_attr(
+    dylint_lib = "general",
+    allow(
+        non_thread_safe_call_in_test,
+        reason = "File mutations affect only this test's unique temporary repository."
+    )
+)]
+fn committed_content_paths_additions_deletions_workflow_and_mode_are_hashed() {
+    for change in [
+        "contents", "addition", "deletion", "rename", "workflow", "mode", "framing",
+    ] {
+        let repo = Repo::new();
+        repo.write("src/a", "bc");
+        repo.write("src/b", "d");
+        repo.commit();
+        let claim = repo.claim();
+        match change {
+            "contents" => repo.write("src/add.rs", "changed"),
+            "addition" => repo.write("src/new", "new"),
+            "deletion" => fs::remove_file(repo.path().join("src/add.rs")).unwrap(),
+            "rename" => {
+                repo.git(&["mv", "src/add.rs", "src/renamed.rs"]);
+            }
+            "workflow" => repo.write(WORKFLOW, "name: Changed\n"),
+            "mode" => {
+                repo.git(&["update-index", "--chmod=+x", "src/add.rs"]);
+            }
+            "framing" => {
+                repo.write("src/a", "b");
+                repo.write("src/b", "cd");
+            }
+            _ => unreachable!(),
+        }
+        if change == "mode" {
+            repo.git(&["commit", "-qm", "Executable"]);
+        } else {
+            repo.commit();
+        }
+        assert!(
+            !verify_claim(Some(&claim), &repo.options()).unwrap(),
+            "{change}"
+        );
+    }
+}
+
+#[test]
+fn filters_bind_policy_always_include_workflow_and_ignore_unselected_committed_changes() {
+    let repo = Repo::new();
+    let mut options = repo.options();
+    options.files = vec!["src/**".into(), " README.md ".into(), "src/**".into()];
+    let wide = create_claim(&options).unwrap();
+    options.files = vec!["README.md".into(), "src/**".into()];
+    assert_eq!(wide, create_claim(&options).unwrap());
+    options.files = vec!["src/**".into()];
+    let narrow = create_claim(&options).unwrap();
+    assert!(!verify_claim(Some(&wide), &options).unwrap());
+    repo.write("README.md", "unselected\n");
+    repo.commit();
+    assert!(verify_claim(Some(&narrow), &options).unwrap());
+    repo.write(WORKFLOW, "name: Changed\n");
+    repo.commit();
+    assert!(!verify_claim(Some(&narrow), &options).unwrap());
+}
+
+#[test]
+fn local_claims_reject_all_tracked_dirtiness_but_verification_never_mutates_index() {
+    let repo = Repo::new();
+    let mut options = repo.options();
+    options.files = vec!["src/**".into()];
+    let claim = create_claim(&options).unwrap();
+    let source = repo.git(&["rev-parse", "HEAD"]);
+    repo.write("README.md", "dirty outside selection");
+    assert!(
+        create_claim(&options)
+            .unwrap_err()
+            .to_string()
+            .contains("Commit tracked changes")
+    );
+    repo.git(&["add", "README.md"]);
+    assert!(create_claim(&options).is_err());
+    let index = fs::read(repo.path().join(".git/index")).unwrap();
+    options.r#ref = source;
+    assert!(verify_claim(Some(&claim), &options).unwrap());
+    assert_eq!(index, fs::read(repo.path().join(".git/index")).unwrap());
+    repo.write("src/untracked", "ignored");
+    assert!(verify_claim(Some(&claim), &options).unwrap());
+    repo.git(&["reset", "--hard", "-q", "HEAD"]);
+    assert_eq!(claim, create_claim(&options).unwrap());
+    repo.git(&["config", "core.autocrlf", "true"]);
+    assert!(verify_claim(Some(&claim), &options).unwrap());
+}
+
+#[test]
+fn missing_malformed_unknown_version_and_noncanonical_claims_never_match() {
+    let repo = Repo::new();
+    let claim = repo.claim();
+    for body in [
+        None,
+        Some(""),
+        Some("Tests passed"),
+        Some("<!-- already-tested:v1 nope -->"),
+        Some(&claim.replace(":v1 ", ":v2 ")),
+        Some(&claim.replace("sha256:", "sha512:")),
+        Some(&claim.replace("\"workflow\":", "\"workflow\": ")),
+    ] {
+        assert!(!verify_claim(body, &repo.options()).unwrap());
+    }
+    let options = Options::new("nonexistent", "", "");
+    assert!(!verify_claim(None, &options).unwrap());
+}
+
+#[test]
+fn invalid_policy_and_refs_fail_before_generating_a_claim() {
+    let repo = Repo::new();
+    for workflow in [
+        "",
+        "../test.yml",
+        "/test.yml",
+        ".github/workflows/a/b.yml",
+        ".github/workflows/a\\b.yml",
+    ] {
+        let mut options = repo.options();
+        options.workflow = workflow.into();
+        assert!(
+            create_claim(&options)
+                .unwrap_err()
+                .to_string()
+                .contains("workflow must")
+        );
+    }
+    for check in ["", "two words", "$(touch bad)", &"a".repeat(129)] {
+        let mut options = repo.options();
+        options.check = check.into();
+        assert!(
+            create_claim(&options)
+                .unwrap_err()
+                .to_string()
+                .contains("check must")
+        );
+    }
+    for pattern in [
+        "",
+        "\u{feff} \u{feff}",
+        "a\0b",
+        " :(attr:generated)**",
+        ":(attr)src/**",
+        "no-such-path",
+        ":(nonsense)**",
+    ] {
+        let mut options = repo.options();
+        options.files = vec![pattern.into()];
+        assert!(create_claim(&options).is_err(), "{pattern:?}");
+    }
+    let mut options = repo.options();
+    options.workflow = ".github/workflows/missing.yml".into();
+    assert!(
+        create_claim(&options)
+            .unwrap_err()
+            .to_string()
+            .contains("not tracked")
+    );
+    let claim = repo.claim();
+    for value in ["--help", "main", &"A".repeat(40), &"0".repeat(40)] {
+        options = repo.options();
+        options.r#ref = value.into();
+        assert!(verify_claim(Some(&claim), &options).is_err());
+        options = repo.options();
+        options.workflow_ref = Some(value.into());
+        assert!(verify_claim(Some(&claim), &options).is_err());
+    }
+}
+
+#[test]
+fn unsupported_index_modes_are_rejected_unless_excluded() {
+    for mode in ["120000", "160000"] {
+        let repo = Repo::new();
+        let mut options = repo.options();
+        options.files = vec!["src/**".into()];
+        let claim = create_claim(&options).unwrap();
+        let oid = if mode == "160000" {
+            repo.git(&["rev-parse", "HEAD"])
+        } else {
+            String::from_utf8(repo.git_bytes(&["hash-object", "-w", "--stdin"], b"README.md"))
+                .unwrap()
+                .trim()
+                .into()
+        };
+        repo.git(&[
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            &format!("{mode},{oid},unsupported"),
+        ]);
+        repo.git(&["commit", "-qm", "Unsupported mode"]);
+        assert!(verify_claim(Some(&claim), &options).unwrap());
+        options.files.clear();
+        assert!(
+            verify_claim(Some(&claim), &options)
+                .unwrap_err()
+                .to_string()
+                .contains("Unsupported file mode")
+        );
+    }
+}
+
+#[test]
+#[cfg_attr(
+    dylint_lib = "general",
+    allow(
+        non_thread_safe_call_in_test,
+        reason = "Object deletion affects only this test's unique temporary repository."
+    )
+)]
+fn missing_blobs_and_replace_objects_cannot_forge_matches() {
+    let repo = Repo::new();
+    let claim = repo.claim();
+    let original = repo.git(&["rev-parse", "HEAD:src/add.rs"]);
+    let replacement =
+        String::from_utf8(repo.git_bytes(&["hash-object", "-w", "--stdin"], b"replacement"))
+            .unwrap();
+    repo.git(&["replace", &original, replacement.trim()]);
+    assert!(verify_claim(Some(&claim), &repo.options()).unwrap());
+    let path = repo
+        .path()
+        .join(".git/objects")
+        .join(&original[..2])
+        .join(&original[2..]);
+    #[cfg(windows)]
+    {
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        permissions.set_readonly(false);
+        fs::set_permissions(&path, permissions).unwrap();
+    }
+    fs::remove_file(path).unwrap();
+    assert!(
+        verify_claim(Some(&claim), &repo.options())
+            .unwrap_err()
+            .to_string()
+            .contains("Cannot read committed file")
+    );
+}
+
+#[test]
+#[cfg_attr(
+    dylint_lib = "general",
+    allow(
+        non_thread_safe_call_in_test,
+        reason = "Hook permissions affect only this test's unique temporary repository."
+    )
+)]
+fn verification_uses_raw_committed_bytes_without_filters_or_index_hooks() {
+    let repo = Repo::new();
+    repo.write(".gitattributes", "src/** filter=trap\n");
+    repo.commit();
+    let claim = repo.claim();
+    repo.git(&["config", "filter.trap.clean", "git --version"]);
+    repo.git(&["config", "filter.trap.smudge", "git --version"]);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        repo.write(
+            ".git/hooked/post-index-change",
+            "#!/bin/sh\nprintf triggered > hook-marker\n",
+        );
+        fs::set_permissions(
+            repo.path().join(".git/hooked/post-index-change"),
+            fs::Permissions::from_mode(0o755),
+        )
+        .unwrap();
+        repo.git(&[
+            "config",
+            "core.hooksPath",
+            repo.path().join(".git/hooked").to_str().unwrap(),
+        ]);
+    }
+    assert!(verify_claim(Some(&claim), &repo.options()).unwrap());
+    assert!(!repo.path().join("hook-marker").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn invalid_utf8_paths_and_real_symlinks_are_rejected() {
+    use std::os::unix::fs::symlink;
+    let repo = Repo::new();
+    let claim = repo.claim();
+    let oid = repo.git(&["rev-parse", "HEAD:src/add.rs"]);
+    let mut entry = format!("100644 {oid}\t").into_bytes();
+    entry.extend([255, 0]);
+    repo.git_bytes(&["update-index", "-z", "--index-info"], &entry);
+    repo.commit_index();
+    assert!(
+        verify_claim(Some(&claim), &repo.options())
+            .unwrap_err()
+            .to_string()
+            .contains("valid UTF-8")
+    );
+    let repo = Repo::new();
+    symlink("README.md", repo.path().join("link")).unwrap();
+    repo.commit();
+    assert!(
+        create_claim(&repo.options())
+            .unwrap_err()
+            .to_string()
+            .contains("Unsupported file mode")
+    );
+}
+
+#[test]
+fn cli_help_version_errors_and_nested_directory_behavior() {
+    let repo = Repo::new();
+    for args in [vec![], vec!["--help"], vec!["claim", "--help"]] {
+        let output = repo.cli(&args);
+        assert!(output.status.success());
+        assert!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .starts_with("Usage:")
+        );
+        assert!(output.stderr.is_empty());
+    }
+    let version = repo.cli(&["--version"]);
+    assert!(version.status.success());
+    assert_eq!(
+        String::from_utf8(version.stdout).unwrap(),
+        format!("{}\n", env!("CARGO_PKG_VERSION"))
+    );
+    for args in [
+        vec!["claim"],
+        vec!["unknown"],
+        vec!["--typo"],
+        vec!["----help"],
+        vec!["--workflow"],
+        vec!["--version", "--help"],
+        vec!["claim", "--version"],
+        vec!["claim", "--workflow", WORKFLOW],
+    ] {
+        let output = repo.cli(&args);
+        assert_eq!(output.status.code(), Some(1), "{args:?}");
+        assert!(output.stdout.is_empty());
+        assert!(
+            String::from_utf8(output.stderr)
+                .unwrap()
+                .starts_with("already-tested:")
+        );
+    }
+    let args = [
+        "claim",
+        "--workflow",
+        WORKFLOW,
+        "--check",
+        "unit",
+        "--files",
+        "src/**",
+        "--files",
+        "README.md",
+    ];
+    let output = repo.cli(&args);
+    assert!(output.status.success());
+    let nested = Command::new(env!("CARGO_BIN_EXE_already-tested"))
+        .args(args)
+        .current_dir(repo.path().join("src"))
+        .output()
+        .unwrap();
+    assert_eq!(output.stdout, nested.stdout);
+    repo.write("README.md", "dirty");
+    let dirty = repo.cli(&args);
+    assert_eq!(dirty.status.code(), Some(1));
+    assert!(dirty.stdout.is_empty());
+}
+
+#[test]
+fn cli_disclosure_is_exact_and_display_metadata_is_inert() {
+    let repo = Repo::new();
+    let claim = repo.claim();
+    let commit = repo.git(&["rev-parse", "HEAD"]);
+    let parsed: serde_json::Value = serde_json::from_str(
+        claim
+            .strip_prefix(already_tested::PREFIX)
+            .unwrap()
+            .strip_suffix(" -->")
+            .unwrap(),
+    )
+    .unwrap();
+    let hash = parsed["hash"]
+        .as_str()
+        .unwrap()
+        .strip_prefix("sha256:")
+        .unwrap();
+    let args = ["claim", "--workflow", WORKFLOW, "--check", "unit"];
+    let output = repo.cli(&args);
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        format!(
+            "<details>\n<summary>unit - passed</summary>\n\n- **Workflow:** ` {WORKFLOW} `\n- **Check:** ` unit `\n- **Commit:** ` {commit} `\n- **Content SHA-256:** ` {hash} ` {claim}\n\n</details>\n"
+        )
+    );
+    let command = "echo bad > executed";
+    let mut with_metadata = args.to_vec();
+    with_metadata.extend([
+        "--summary",
+        "<passed> & done",
+        "--command",
+        command,
+        "--environment",
+        "<host> & `tools` ``",
+    ]);
+    let output = repo.cli(&with_metadata);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("<summary>&lt;passed&gt; &amp; done</summary>\n\n- **Ran:** ` echo bad > executed `\n- **Environment:** ``` <host> & `tools` `` ```\n"));
+    assert!(text.contains(&claim));
+    assert!(!repo.path().join("executed").exists());
+    let mut raw = args.to_vec();
+    raw.push("--raw");
+    assert_eq!(repo.cli(&raw).stdout, format!("{claim}\n").as_bytes());
+    for option in ["--summary", "--command", "--environment"] {
+        for value in ["", "  ", "\u{feff}", "first\nsecond", "first\rsecond"] {
+            let mut invalid = args.to_vec();
+            invalid.extend([option, value]);
+            let output = repo.cli(&invalid);
+            assert_eq!(output.status.code(), Some(1));
+            assert!(output.stdout.is_empty());
+            assert!(
+                String::from_utf8(output.stderr)
+                    .unwrap()
+                    .contains("nonempty single-line")
+            );
+        }
+        let mut invalid = raw.clone();
+        invalid.extend([option, "metadata"]);
+        let output = repo.cli(&invalid);
+        assert_eq!(output.status.code(), Some(1));
+        assert!(
+            String::from_utf8(output.stderr)
+                .unwrap()
+                .contains("--raw cannot be combined")
+        );
+    }
+}
+
+#[test]
+fn library_cli_and_action_complete_pr_head_and_description_edit_round_trip() {
+    let repo = Repo::new();
+    let source = repo.git(&["rev-parse", "HEAD"]);
+    let output = repo.cli(&["claim", "--workflow", WORKFLOW, "--check", "unit"]);
+    assert!(output.status.success());
+    let body = String::from_utf8(output.stdout).unwrap();
+    assert!(verify_claim(Some(&body), &repo.options()).unwrap());
+    let (result, output) = repo.action(body.clone().into(), &source, &[]);
+    assert!(result.status.success());
+    assert_eq!(output, "skip=true\n");
+    let (result, output) = repo.action("Tests passed".into(), &source, &[]);
+    assert!(result.status.success());
+    assert_eq!(output, "skip=false\n");
+    repo.write("src/add.rs", "changed committed source");
+    let changed = repo.commit();
+    let (result, output) = repo.action(body.into(), &changed, &[]);
+    assert!(result.status.success());
+    assert_eq!(output, "skip=false\n");
+    let fresh = repo.claim();
+    let (result, output) = repo.action(fresh.into(), &changed, &[]);
+    assert!(result.status.success());
+    assert_eq!(output, "skip=true\n");
+}
+
+#[test]
+fn action_binds_filters_identity_and_actual_executing_workflow_not_checkout() {
+    let repo = Repo::new();
+    let mut options = repo.options();
+    options.files = vec!["src/**".into()];
+    let claim = create_claim(&options).unwrap();
+    let source = repo.git(&["rev-parse", "HEAD"]);
+    let (result, output) = repo.action(
+        claim.clone().into(),
+        &source,
+        &[("INPUT_FILES", Some("\r\n\u{feff} src/**\u{feff}\r\n\n"))],
+    );
+    assert!(result.status.success());
+    assert_eq!(output, "skip=true\n");
+    for extra in [
+        vec![],
+        vec![
+            ("INPUT_CHECK", Some("other")),
+            ("INPUT_FILES", Some("src/**")),
+        ],
+    ] {
+        let (result, output) = repo.action(claim.clone().into(), &source, &extra);
+        assert!(result.status.success());
+        assert_eq!(output, "skip=false\n");
+    }
+    repo.write(
+        "README.md",
+        "new base content irrelevant to selected source",
+    );
+    let base = repo.commit();
+    let (result, output) = repo.action(
+        claim.clone().into(),
+        &source,
+        &[
+            ("INPUT_FILES", Some("src/**")),
+            ("GITHUB_WORKFLOW_SHA", Some(&base)),
+        ],
+    );
+    assert!(result.status.success());
+    assert_eq!(output, "skip=true\n");
+    repo.write(WORKFLOW, "name: Workflow changed on base\n");
+    repo.commit();
+    let (result, output) = repo.action(claim.into(), &source, &[("INPUT_FILES", Some("src/**"))]);
+    assert!(result.status.success());
+    assert_eq!(output, "skip=false\n");
+}
+
+#[test]
+fn action_fails_safe_for_untrusted_events_and_operational_failures_but_output_errors_fail() {
+    let repo = Repo::new();
+    let claim = repo.claim();
+    let source = repo.git(&["rev-parse", "HEAD"]);
+    let missing = repo.path().join("missing");
+    let missing = missing.to_str().unwrap();
+    let invalid_event = repo.path().join("README.md");
+    let invalid_event = invalid_event.to_str().unwrap();
+    for (name, value) in [
+        ("GITHUB_EVENT_PATH", Some(missing)),
+        ("GITHUB_EVENT_PATH", Some(invalid_event)),
+        ("GITHUB_WORKFLOW_REF", Some("")),
+        ("GITHUB_WORKFLOW_REF", None),
+        ("GITHUB_WORKFLOW_SHA", Some("")),
+        ("GITHUB_WORKSPACE", Some(missing)),
+        ("INPUT_CHECK", Some("")),
+        ("INPUT_FILES", Some("missing-path")),
+    ] {
+        let (result, output) = repo.action(claim.clone().into(), &source, &[(name, value)]);
+        assert!(
+            result.status.success(),
+            "{name}: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert_eq!(output, "skip=false\n");
+        let log = String::from_utf8(result.stdout).unwrap();
+        assert!(log.contains("Running CI normally."), "{name}: {log}");
+        assert_eq!(log.lines().count(), 2);
+    }
+    for source in ["--help", &"0".repeat(40)] {
+        let (result, output) = repo.action(claim.clone().into(), source, &[]);
+        assert!(result.status.success());
+        assert_eq!(output, "skip=false\n");
+        assert!(
+            String::from_utf8(result.stdout)
+                .unwrap()
+                .contains("Running CI normally.")
+        );
+    }
+    for event in ["push", "workflow_dispatch", "pull_request_target"] {
+        let (result, output) = repo.action(
+            claim.clone().into(),
+            &source,
+            &[
+                ("GITHUB_EVENT_NAME", Some(event)),
+                ("GITHUB_EVENT_PATH", Some(missing)),
+            ],
+        );
+        assert!(result.status.success());
+        assert_eq!(output, "skip=false\n");
+        assert!(
+            !String::from_utf8(result.stdout)
+                .unwrap()
+                .contains("Running CI normally.")
+        );
+    }
+    for value in [
+        serde_json::Value::Null,
+        serde_json::json!(42),
+        serde_json::json!("<!-- already-tested:v2 nope -->"),
+    ] {
+        let (result, output) = repo.action(value, &source, &[]);
+        assert!(result.status.success());
+        assert_eq!(output, "skip=false\n");
+    }
+    for output_path in [None, Some(repo.path().to_str().unwrap()), Some(missing)] {
+        // A missing file itself is appendable; a missing parent is not.
+        let nested = format!("{missing}/output");
+        let output_path = output_path.map(|path| {
+            if path == missing {
+                nested.as_str()
+            } else {
+                path
+            }
+        });
+        let (result, _) = repo.action(
+            claim.clone().into(),
+            &source,
+            &[("GITHUB_OUTPUT", output_path)],
+        );
+        assert_eq!(result.status.code(), Some(1));
+        assert!(
+            String::from_utf8(result.stderr)
+                .unwrap()
+                .starts_with("already-tested:")
+        );
+    }
+    repo.write("append-output", "existing\n");
+    let path = repo.path().join("append-output");
+    let (result, _) = repo.action(
+        claim.into(),
+        &source,
+        &[("GITHUB_OUTPUT", Some(path.to_str().unwrap()))],
+    );
+    assert!(result.status.success());
+    assert_eq!(fs::read_to_string(path).unwrap(), "existing\nskip=true\n");
+}
+
+#[test]
+fn committed_blob_output_is_capped_at_64_mib() {
+    let repo = Repo::new();
+    let claim = repo.claim();
+    repo.index_file("large.bin", "100644", &vec![0; 64 * 1024 * 1024]);
+    repo.commit_index();
+    assert!(
+        verify_claim(Some(&claim), &repo.options())
+            .unwrap_err()
+            .to_string()
+            .contains("64 MiB")
+    );
+}
