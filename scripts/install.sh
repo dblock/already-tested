@@ -10,11 +10,16 @@ target() {
     arch=arm64
   fi
   case "$os" in
-    MINGW*|MSYS*|CYGWIN*) arch=${PROCESSOR_ARCHITEW6432:-${PROCESSOR_ARCHITECTURE:-$arch}} ;;
+    MINGW*|MSYS*|CYGWIN*)
+      arch=${PROCESSOR_ARCHITEW6432:-${PROCESSOR_ARCHITECTURE:-$arch}}
+      if command -v pwsh >/dev/null 2>&1 &&
+        native_arch=$(pwsh -NoProfile -NonInteractive -Command '[System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()'); then
+        arch=$(printf '%s' "$native_arch" | tr -d '\r')
+      fi ;;
   esac
   case "$arch" in
-    x86_64|amd64|AMD64) arch=x86_64 ;;
-    arm64|aarch64|ARM64) arch=aarch64 ;;
+    x86_64|amd64|AMD64|X64) arch=x86_64 ;;
+    arm64|aarch64|ARM64|Arm64) arch=aarch64 ;;
     *) fail "Unsupported architecture: $arch" ;;
   esac
   case "$os" in

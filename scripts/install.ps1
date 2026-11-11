@@ -72,7 +72,7 @@ try {
     Copy-Item -LiteralPath $executable -Destination $stage
     $destination = Join-Path $BinDir "already-tested.exe"
     if (Test-Path -LiteralPath $destination) {
-        [IO.File]::Replace($stage, $destination, $null)
+        [IO.File]::Replace($stage, $destination, [NullString]::Value)
     } else {
         [IO.File]::Move($stage, $destination)
     }
