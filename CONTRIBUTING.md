@@ -5,13 +5,15 @@
 Install Rust through rustup and Git 2.29+. `rust-toolchain.toml` selects stable Rust 1.99.1 with formatting/Clippy. No Node/npm tooling is needed.
 
 ```sh
-cargo install --locked cargo-dylint dylint-link --version 6.2.0
+cargo install --locked cargo-dylint dylint-link --version 6.4.0
 cargo test --locked --workspace --all-targets
 cargo xtask lint
 cargo xtask package
 ```
 
-Dylint is this repository's default framework for additional lint rules. Version 6.2.0 matches the pinned general-purpose suite and [dylint-spellcheck](https://github.com/dblock/dylint-spellcheck); it provisions their nightly compiler without changing normal builds. `cargo xtask lint` runs formatting, Clippy, document checks, and all configured Dylint libraries, failing on warnings. Spelling covers Rust comments and root Markdown documents; review `.spellcheck.txt` vocabulary instead of accepting genuine typos.
+Dylint is this repository's default framework for additional lint rules. CLI tools 6.4.0 fix driver builds after the Clippy default branch changed; the general-purpose suite and [dylint-spellcheck](https://github.com/dblock/dylint-spellcheck) remain independently pinned. Dylint provisions their nightly compiler without changing normal builds. `cargo xtask lint` runs formatting, Clippy, document checks, and all configured Dylint libraries, failing on warnings. Spelling covers Rust comments and root Markdown documents; review `.spellcheck.txt` vocabulary instead of accepting genuine typos.
+
+The Dylint CI job installs checksum-verified upstream binaries and caches the tools, nightly compiler, driver, and built lint libraries. Its cache key covers platform, manifests, `Cargo.lock`, toolchain, and workflow configuration. It does not cache lint results; Dylint still checks each revision.
 
 CI follows [excalc-rs](https://github.com/dblock/excalc-rs): separate Test, Coverage, Lint, and Package workflows, with separate formatting/Clippy/document and Dylint jobs in Lint. Dylint runs `cargo dylint --all --fail-on-no-libraries -- --locked --workspace --all-targets --all-features` with `DYLINT_RUSTFLAGS="-D warnings"`; structural Markdown/YAML and shell checks remain in `cargo xtask docs` where these libraries have no equivalent. There are no optional application features, so duplicate feature-mode runs are unnecessary.
 
