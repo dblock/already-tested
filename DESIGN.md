@@ -55,7 +55,16 @@ Temporary Git indexes evaluate pathspecs without changing the caller's index. Re
 
 ## GitHub Action
 
-The composite Action invokes a platform-selected native binary, without Node or a compiler. Optional `version` defaults to this Action's `v0.1.0`, not a mutable latest binary; pin a reviewed Action commit and binary release for production.
+The composite Action invokes a platform-selected native binary. No separate CLI installation step is needed in the workflow.
+
+| Input/Output | Meaning |
+| --- | --- |
+| `check` input | Required job/environment ID; must match CLI `--check` |
+| `files` input | Optional newline-separated Git pathspecs; must match CLI `--files` |
+| `version` input | Binary release; defaults to the Action's version, currently `v0.1.0` |
+| `skip` output | String `true` for a matching claim; otherwise `false` |
+
+Use `if: steps.tested.outputs.skip != 'true'` on each replaceable step, with `tested` as the Action step ID. Pin a reviewed Action commit for immutable workflow dependencies.
 
 Only `pull_request` events can skip CI. Trigger on `opened`, `synchronize`, `reopened`, and `edited`; use depth-2 checkout to retain PR-head and executing-workflow commits. Custom/reusable workflows must make those specific commits available too. Distinguish check IDs across jobs and environments.
 
@@ -80,9 +89,16 @@ Each archive contains the executable and MIT license, with an adjacent `.sha256`
 
 POSIX installation accepts `--version v0.1.0`, `--bin-dir PATH`, and `--print-target`; Windows accepts `-Version`, `-BinDir`, and `-PrintTarget`. Defaults: latest release and `~/.local/bin`. They do not modify shell profiles. Ordinary use requires Git; installation uses OS shell, HTTPS download, archive, and checksum facilities.
 
-For CI artifacts before publication, place a matching archive/checksum together and set `ALREADY_TESTED_DOWNLOAD_BASE_URL` to that directory's `file://` URL, then run the installer. HTTPS base URLs are supported too; other schemes are rejected. Empty overrides use defaults. POSIX also accepts `ALREADY_TESTED_VERSION` and `ALREADY_TESTED_BIN_DIR`.
+For a mirror or local archive test, set `ALREADY_TESTED_DOWNLOAD_BASE_URL` to an HTTPS directory or `file://` URL containing the archive and checksum. Other schemes are rejected; empty overrides use defaults. POSIX also accepts `ALREADY_TESTED_VERSION` and `ALREADY_TESTED_BIN_DIR`.
 
-`ALREADY_TESTED_BINARY` selects an already-built verifier for Action integration tests; ordinary users leave it unset. No release has been published by this implementation.
+For example, pin a CLI version or change its destination:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/dblock/already-tested/master/scripts/install.sh \
+  | sh -s -- --version v0.1.0 --bin-dir "$HOME/.local/bin"
+```
+
+`ALREADY_TESTED_BINARY` selects an already-built verifier for Action integration tests; ordinary users leave it unset.
 
 ## Development and Artwork
 

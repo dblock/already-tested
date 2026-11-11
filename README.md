@@ -4,43 +4,57 @@
 
 [![Test](https://github.com/dblock/already-tested/actions/workflows/test.yml/badge.svg)](https://github.com/dblock/already-tested/actions/workflows/test.yml) [![Coverage](https://github.com/dblock/already-tested/actions/workflows/coverage.yml/badge.svg)](https://github.com/dblock/already-tested/actions/workflows/coverage.yml) [![Lint](https://github.com/dblock/already-tested/actions/workflows/lint.yml/badge.svg)](https://github.com/dblock/already-tested/actions/workflows/lint.yml) [![Package](https://github.com/dblock/already-tested/actions/workflows/package.yml/badge.svg)](https://github.com/dblock/already-tested/actions/workflows/package.yml)
 
-Skip duplicate CI when a trusted local run matches the committed source and workflow. **Claims are not proof that tests ran.**
+Run your existing CI checks locally, then let GitHub Actions skip matching work.
 
-Native Rust binaries for Linux, macOS, and Windows, on x86_64 and ARM64. Git must be available; no Node, npm, or Rust runtime is needed.
+**For trusted contributors only:** claims bind committed files and the workflow, but do not prove tests ran. Anyone who can edit the PR description can forge a claim.
 
 ## Installation
 
-Unreleased: release downloads become available after the first GitHub Release. Meanwhile, download your platform archive and checksum from the Package workflow, or build with `cargo build --release`.
-
-The installers select your platform and verify the archive checksum before replacing the executable:
+Install locally on macOS or Linux:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/dblock/already-tested/master/scripts/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+already-tested --version
 ```
 
-On Windows, download and run [install.ps1](scripts/install.ps1). Both installers default to `~/.local/bin`; add it to PATH if needed. See [installation options](DESIGN.md#binary-distribution) for pinned versions and local CI artifacts.
+On Windows, run in PowerShell:
+
+```powershell
+$installer = "$env:TEMP\already-tested-install.ps1"
+Invoke-WebRequest https://raw.githubusercontent.com/dblock/already-tested/master/scripts/install.ps1 -OutFile $installer
+& $installer
+$env:PATH = "$HOME\.local\bin;$env:PATH"
+already-tested --version
+```
+
+The installer selects your OS/CPU and verifies the download. Supports Linux, macOS, and Windows on x86_64/ARM64; requires Git 2.29+, not Node or Rust. PATH changes above affect the current shell; add the directory to your shell profile for future sessions.
 
 ## Usage
 
-Use your project's existing checks, in any language:
-
-1. Run the complete CI check locally in its matching environment.
-2. Commit exactly that tested source.
-3. Generate a claim and paste the **entire output** into the PR description:
+With the [workflow configured](#github-actions), run your complete CI check locally and commit the tested files. Then:
 
 ```sh
 already-tested claim --workflow .github/workflows/test.yml --check test-linux \
-  --command './script/ci' --environment '<actual toolchain versions and OS>'
+  --command './script/ci' --environment '<actual OS, CPU, and toolchain versions>'
 ```
 
-Output is an expandable check such as `test-linux - passed`, with validation details, the commit, content SHA-256, and a hidden machine-readable claim. Regenerate after source or workflow changes; the CLI records your command/environment but never runs or verifies them.
+Paste the **entire output into the PR description**, not a comment. After tracked source or workflow changes, retest, commit, and replace the claim. The CLI records your statement; it does not run the command.
 
-Add the gate after depth-2 checkout and before your setup/test steps:
+## Configuration
+
+### GitHub Actions
+
+In `.github/workflows/test.yml`, add the gate immediately after checkout. Replace `./script/ci` with your existing check, and add the `if` condition to every setup, dependency-install, and test step you want to skip:
 
 ```yaml
+name: Test
 on:
+  push:
   pull_request:
     types: [opened, synchronize, reopened, edited]
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -49,21 +63,35 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
-      - uses: dblock/already-tested@master
+      - uses: dblock/already-tested@v0.1.0
         id: tested
         with:
           check: test-linux
-      - if: steps.tested.outputs.skip != 'true'
+      - name: Run Tests
+        if: steps.tested.outputs.skip != 'true'
         run: ./script/ci
 ```
 
-Replace `./script/ci` with your actual command and condition setup/install steps too. Use distinct check IDs for different jobs/environments. Missing, stale, invalid, or unavailable claims/binaries run normal CI. The workflow still produces its required check. Pin a reviewed Action commit for production.
+The Action installs its verifier automatically. Keep `fetch-depth: 2` and the `edited` trigger. Use a distinct `check` ID for each job/OS/runtime and the same ID/workflow path in the CLI. Pin a reviewed full Action commit SHA instead of the release tag for immutable dependencies.
 
-## Configuration
+Matching claims skip conditioned steps while keeping the job's required check. Missing or stale claims run normal CI; pushes always run CI. By default, all tracked files and the executing workflow are covered; untracked/ignored files are excluded. Claims require a clean tracked working tree.
 
-Default: all tracked files plus the workflow. Optional Git pathspec filters must match on the CLI and Action. Anyone who can edit the PR description can forge claims; keep independent checks for external state, platforms, and integration.
+Keep independent CI for external services, secrets, or environments you cannot reproduce locally. See [options, filters, installation settings, and limitations](DESIGN.md).
 
-See [CLI options, filters, protocol, and limitations](DESIGN.md). The Action selects its platform binary automatically; until a release is published it conservatively runs normal CI.
+### AI Agents
+
+Add this to your project's `AGENTS.md`, replacing the command, workflow path, and check ID with your job's values:
+
+```markdown
+## Local CI Claims
+
+- Run the complete `./script/ci` check in the job's OS, CPU, and toolchain environment.
+- Commit the tested files and leave the tracked working tree clean.
+- Run `already-tested claim --workflow .github/workflows/test.yml --check test-linux --command './script/ci' --environment '<actual OS, CPU, and toolchain versions>'`.
+- Paste the entire output into the PR description, preserving its hidden claim.
+- After tracked source or workflow changes, retest, commit, and replace the claim.
+- Never claim checks you did not run or other environments; omit the claim and let CI run instead.
+```
 
 ## Contributing
 

@@ -36,8 +36,8 @@ Report pending CI without waiting after local validation. After authorized merge
 
 ## Versioning and Releases
 
-Verify publication before bumping; ask if uncertain. Keep unreleased `0.1.0` unchanged. After release, bump in the change PR: features increment minor, reset patch for `0.x`, preserve patch for `1.x` onward. Breaking `0.x` changes increment minor/reset patch; ask before breaking `1.x`+ major bumps. Synchronize Cargo manifest/lock, Action version, and Next heading.
+Verify GitHub publication before bumping; ask if uncertain. Keep an unpublished version unchanged. After release, bump in the change PR: features increment minor, reset patch for `0.x`, preserve patch for `1.x` onward. Breaking `0.x` changes increment minor/reset patch; ask before breaking `1.x`+ major bumps. Synchronize Cargo manifest/lock, Action version, and Next heading.
 
 For released breaking changes, including `0.x`, add `UPGRADING.md` with source/target versions, before/after examples, and the introducing PR; link from README.
 
-[Release instructions](RELEASING.md) are provisional. Build and validate exact archives, but never publish crates/releases, create tags, dispatch publishing, configure credentials, or overwrite versions/tags without explicit authorization. Binary installation needs no registry publication.
+Follow [release instructions](RELEASING.md). Build and validate exact archives, but never publish crates/releases, create tags, dispatch publishing, configure credentials, or overwrite versions/tags without explicit authorization. Binary installation needs no registry publication.

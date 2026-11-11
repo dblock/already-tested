@@ -38,7 +38,7 @@ target/debug/already-tested claim --workflow .github/workflows/test.yml --check 
 
 Test check IDs are `test-ubuntu-latest`, `test-macos-latest`, and `test-windows-latest`. The aggregate `cargo xtask lint` covers both portable `lint` and `dylint` check IDs; Package uses `package-<target>` after native `cargo xtask package --target <target>`. Never claim other platforms, focused tests as full jobs, unrun archive validation, or CI-only Coverage.
 
-Use no file filters: repository CI hashes all tracked files. Paste unmodified default disclosures adjacent, without blank separators or outer bullets. Include actual command/environment; keep canonical claims hidden inline. Regenerate after tracked changes. Until a binary release exists, Action installation conservatively falls back to running normal CI even when claims are present.
+Use no file filters: repository CI hashes all tracked files. Paste unmodified default disclosures adjacent, without blank separators or outer bullets. Include actual command/environment; keep canonical claims hidden inline. Regenerate after tracked changes.
 
 ## Pull Requests
 
