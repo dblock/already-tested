@@ -1,0 +1,20 @@
+name: Set Up Dylint
+description: Restore pinned compiler tooling or install verified Dylint binaries.
+runs:
+  using: composite
+  steps:
+    - name: Cache Dylint Tooling
+      id: cache
+      uses: actions/cache@v6.1.0
+      with:
+        path: |
+          ~/.cargo/bin/cargo-dylint
+          ~/.cargo/bin/dylint-link
+          ~/.dylint_drivers
+          ~/.rustup/toolchains/nightly-2026-08-20-x86_64-unknown-linux-gnu
+          target/dylint/libraries
+        key: dylint-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'xtask/Cargo.toml', 'xtask/src/setup.rs', '.github/workflows/lint.yml', '.github/actions/setup-dylint/action.yml') }}
+    - name: Install Dylint
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: cargo xtask setup-dylint

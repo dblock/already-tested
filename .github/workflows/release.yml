@@ -3,45 +3,67 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish a GitHub Release for an existing version tag (requires explicit authorization)
+        description: Publish to crates.io and GitHub (requires explicit authorization)
         type: boolean
         default: false
 permissions:
   contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   build:
     name: Build Release Archives
     uses: ./.github/workflows/package.yml
   release:
-    name: Publish Verified Archives
+    name: Publish Crate and Native Archives
     if: inputs.publish && github.ref == 'refs/heads/master'
     needs: build
     runs-on: ubuntu-latest
     environment: release
     permissions:
+      actions: read
       contents: write
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      GH_HOST: github.com
     steps:
       - name: Check Out Source
         uses: actions/checkout@v7.0.1
         with:
-          persist-credentials: false
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Configure Release Identity
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+      - name: Set Up Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: 1.99.1
+          components: clippy,rustfmt
+          targets: x86_64-unknown-linux-musl
+      - name: Cache Rust Dependencies
+        uses: Swatinem/rust-cache@v2.9.3
+        with:
+          shared-key: release
+      - name: Set Up Dylint
+        uses: ./.github/actions/setup-dylint
+      - name: Install Linux Static Linker
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Download Exact Archives
         uses: actions/download-artifact@v8.0.2
         with:
           pattern: binary-*
           merge-multiple: true
-          path: pkg
-      - name: Publish GitHub Release
+          path: ${{ runner.temp }}/native-release
+      - name: Release Crate
+        id: release
+        uses: dblock/rust-crate-release@ac999bd3eec520a42d1322222fd57671b20725fe # v0.1.1
+      - name: Upload Verified Native Assets
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        shell: bash
-        run: |
-          set -eu
-          test "$(find pkg -name '*.tar.gz' | wc -l)" -eq 6
-          test "$(find pkg -name '*.tar.gz.sha256' | wc -l)" -eq 6
-          (cd pkg && sha256sum --check ./*.sha256)
-          version=$(sed -n 's/^version = "\([^"]*\)"$/\1/p' Cargo.toml | head -n 1)
-          test -n "$version"
-          test "$(gh api "repos/$GH_REPO/commits/refs%2Ftags%2Fv$version" --jq .sha)" = "$GITHUB_SHA"
-          gh release create "v$version" pkg/* --target "$GITHUB_SHA" --title "v$version" --generate-notes --verify-tag
+          RELEASED_VERSION: ${{ steps.release.outputs.version }}
+          NATIVE_ARCHIVE_DIRECTORY: ${{ runner.temp }}/native-release
+        run: cargo xtask publish-native-assets

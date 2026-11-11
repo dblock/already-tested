@@ -19,10 +19,17 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
+      - name: Read Released Verifier Version
+        id: verifier
+        shell: bash
+        run: |
+          version=$(cat .github/ci-version)
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
       - name: Check Local CI Claim
         id: local
         uses: ./
         with:
+          version: ${{ steps.verifier.outputs.version }}
           check: lint
       - name: Set Up Rust
         if: steps.local.outputs.skip != 'true'
@@ -53,10 +60,17 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
+      - name: Read Released Verifier Version
+        id: verifier
+        shell: bash
+        run: |
+          version=$(cat .github/ci-version)
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
       - name: Check Local CI Claim
         id: local
         uses: ./
         with:
+          version: ${{ steps.verifier.outputs.version }}
           check: dylint
       - name: Set Up Rust
         if: steps.local.outputs.skip != 'true'
@@ -68,35 +82,9 @@ jobs:
         uses: Swatinem/rust-cache@v2.9.3
         with:
           shared-key: dylint
-      - name: Cache Dylint Tooling
+      - name: Set Up Dylint
         if: steps.local.outputs.skip != 'true'
-        id: dylint-cache
-        uses: actions/cache@v6.1.0
-        with:
-          path: |
-            ~/.cargo/bin/cargo-dylint
-            ~/.cargo/bin/dylint-link
-            ~/.dylint_drivers
-            ~/.rustup/toolchains/nightly-2026-08-20-x86_64-unknown-linux-gnu
-            target/dylint/libraries
-          key: dylint-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.github/workflows/lint.yml') }}
-      - name: Install Dylint
-        if: steps.local.outputs.skip != 'true' && steps.dylint-cache.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$RUNNER_TEMP"
-          for tool in cargo-dylint dylint-link; do
-            archive="$tool-x86_64-unknown-linux-gnu-v6.4.0.tar.gz"
-            base=https://github.com/trailofbits/dylint/releases/download/v6.4.0
-            curl -fsSL "$base/$archive" -o "$archive"
-            curl -fsSL "$base/$archive.sha256" -o "$archive.sha256"
-            read -r label expected extra < "$archive.sha256"
-            [[ "$label" == "SHA2-256($archive)=" && "$expected" =~ ^[0-9a-f]{64}$ && -z "$extra" ]]
-            printf '%s  %s\n' "$expected" "$archive" | sha256sum --check
-            tar -xzf "$archive" --strip-components=1 "$tool-x86_64-unknown-linux-gnu-v6.4.0/$tool"
-            install -m 755 "$tool" "$HOME/.cargo/bin/$tool"
-          done
+        uses: ./.github/actions/setup-dylint
       - name: Run Dylint
         if: steps.local.outputs.skip != 'true'
         env:

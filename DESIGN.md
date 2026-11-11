@@ -89,6 +89,8 @@ Each archive contains the executable and MIT license, with an adjacent `.sha256`
 
 Each GitHub Release also includes `install.sh` and `install.ps1` as downloadable assets. Use versioned URLs and version arguments to pin both the installer and binary.
 
+Release orchestration uses rust-crate-release for exact Cargo archive publication, durable preservation, changelog updates, Git tags/commits, GitHub hosting, and next-development validation. A project metadata hook keeps Action defaults synchronized while pinning user references to the published version. Native archives are independently validated before publication, retained outside the checkout, and attached unchanged afterward with tagged installer scripts. Dylint setup and native asset publication live in Rust `xtask` commands; Actions retain cache handling and thin task calls. See [Releasing](RELEASING.md) for authorization, registry setup, direct-push requirements, and partial-release recovery.
+
 POSIX installation accepts `--version v0.1.0`, `--bin-dir PATH`, and `--print-target`; Windows accepts `-Version`, `-BinDir`, and `-PrintTarget`. Defaults: latest release and `~/.local/bin`. They do not modify shell profiles. Ordinary use requires Git; installation uses OS shell, HTTPS download, archive, and checksum facilities.
 
 For a mirror or local archive test, set `ALREADY_TESTED_DOWNLOAD_BASE_URL` to an HTTPS directory or `file://` URL containing the archive and checksum. Other schemes are rejected; empty overrides use defaults. POSIX also accepts `ALREADY_TESTED_VERSION` and `ALREADY_TESTED_BIN_DIR`.
