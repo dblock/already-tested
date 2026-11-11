@@ -6,4 +6,5 @@
 - [#2](https://github.com/dblock/already-tested/pull/2): Simplify release-ready installation, GitHub Actions setup, and local claims, with AI agent instructions - [@dblock](https://github.com/dblock).
 - [#4](https://github.com/dblock/already-tested/pull/4): Fix native Windows ARM64 selection under Git Bash and replacement of installed Windows binaries - [@dblock](https://github.com/dblock).
 - [#5](https://github.com/dblock/already-tested/pull/5): Speed up Dylint CI with verified upstream binaries and cached tooling, and fix driver builds after the Clippy branch rename - [@dblock](https://github.com/dblock).
+- [#3](https://github.com/dblock/already-tested/pull/3): Lead README setup with GitHub Actions and agent instructions, and document version-pinned release installers - [@dblock](https://github.com/dblock).
 - Your contribution here.
