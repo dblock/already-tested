@@ -30,7 +30,7 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
-      - uses: dblock/already-tested@v0.1.0
+      - uses: dblock/already-tested@v0.1.1
         id: tested
         with:
           check: test-linux
@@ -76,7 +76,7 @@ By default, all tracked files and the executing workflow are covered; untracked/
 Agents use the CLI to generate claims. Install on macOS or Linux:
 
 ```sh
-curl -fsSL https://github.com/dblock/already-tested/releases/download/v0.1.0/install.sh | sh -s -- --version v0.1.0
+curl -fsSL https://github.com/dblock/already-tested/releases/download/v0.1.1/install.sh | sh -s -- --version v0.1.1
 export PATH="$HOME/.local/bin:$PATH"
 already-tested --version
 ```
@@ -85,8 +85,8 @@ On Windows, run in PowerShell:
 
 ```powershell
 $installer = "$env:TEMP\already-tested-install.ps1"
-Invoke-WebRequest https://github.com/dblock/already-tested/releases/download/v0.1.0/install.ps1 -OutFile $installer
-& $installer -Version v0.1.0
+Invoke-WebRequest https://github.com/dblock/already-tested/releases/download/v0.1.1/install.ps1 -OutFile $installer
+& $installer -Version v0.1.1
 $env:PATH = "$HOME\.local\bin;$env:PATH"
 already-tested --version
 ```

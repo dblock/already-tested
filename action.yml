@@ -10,7 +10,7 @@ inputs:
     required: false
   version:
     description: Binary release version; defaults to the version of this Action.
-    default: v0.1.1
+    default: v0.1.2
     required: false
 outputs:
   skip:
