@@ -2,7 +2,7 @@
 
 All notable changes are documented here using [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.1] - 2026-11-12
 
 ### Fixed
 
@@ -33,6 +33,7 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 - [#5](https://github.com/dblock/already-tested/pull/5): Speed up Dylint CI with verified upstream binaries and cached tooling, and fix driver builds after the Clippy branch rename - [@dblock](https://github.com/dblock).
 
-[Unreleased]: https://github.com/dblock/already-tested/compare/v0.1.0...master
+[Unreleased]: https://github.com/dblock/already-tested/compare/v0.1.1...master
+[0.1.1]: https://github.com/dblock/already-tested/compare/v0.1.0...v0.1.1
 
 [0.1.0]: https://github.com/dblock/already-tested/releases/tag/v0.1.0
