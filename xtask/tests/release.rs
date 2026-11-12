@@ -2,8 +2,10 @@
 
 use rust_crate_release::{
     engine::CommandValidator,
+    package::{CargoPackage, PackageProject},
     testing::{CopySelection, GitProject, ReleaseFixture},
 };
+use semver::Version;
 use sha2::{Digest, Sha256};
 use std::{
     fs,
@@ -60,7 +62,11 @@ fn git(project: &GitProject, args: &[&str]) -> Result<String> {
     )
 }
 
-fn native_assets(project: &GitProject) -> Result<PathBuf> {
+fn next_version(version: &Version) -> Version {
+    Version::new(version.major, version.minor, version.patch + 1)
+}
+
+fn native_assets(project: &GitProject, version: &str) -> Result<PathBuf> {
     let mock = project.temporary_directory().join("mock");
     fs::create_dir_all(mock.join("assets"))?;
     fs::create_dir(mock.join("bin"))?;
@@ -89,13 +95,13 @@ fn native_assets(project: &GitProject) -> Result<PathBuf> {
     }
     fs::write(
         mock.join("tag-sha"),
-        git(project, &["rev-parse", "v0.1.0"])?,
+        git(project, &["rev-parse", &format!("v{version}")])?,
     )?;
     fs::write(mock.join("released"), "")?;
     Ok(mock)
 }
 
-fn upload(project: &GitProject, mock: &Path, source: &str) -> Result<Output> {
+fn upload(project: &GitProject, mock: &Path, source: &str, version: &str) -> Result<Output> {
     Ok(Command::new(env!("CARGO_BIN_EXE_xtask"))
         .arg("publish-native-assets")
         .current_dir(project.root())
@@ -107,7 +113,7 @@ fn upload(project: &GitProject, mock: &Path, source: &str) -> Result<Output> {
         .env("GH_REPO", "dblock/already-tested")
         .env("GITHUB_SHA", source.trim())
         .env("NATIVE_ARCHIVE_DIRECTORY", mock.join("native"))
-        .env("RELEASED_VERSION", "0.1.0")
+        .env("RELEASED_VERSION", version)
         .env("GITHUB_STEP_SUMMARY", mock.join("summary"))
         .output()?)
 }
@@ -121,10 +127,29 @@ fn upload(project: &GitProject, mock: &Path, source: &str) -> Result<Output> {
     )
 )]
 fn release_fixture_updates_metadata_and_native_uploads_recover_without_overwriting() -> Result<()> {
-    let mut fixture = ReleaseFixture::new(project()?)?;
+    let project = project()?;
+    let released = CargoPackage::new(project.root())?.metadata()?.version;
+    let next = next_version(&released);
+    let version = released.to_string();
+    let changelog = project.root().join("CHANGELOG.md");
+    fs::write(
+        &changelog,
+        fs::read_to_string(&changelog)?.replacen(
+            "## [Unreleased]\n",
+            "## [Unreleased]\n\n- Exercise the release lifecycle.\n",
+            1,
+        ),
+    )?;
+    git(&project, &["add", "CHANGELOG.md"])?;
+    git(&project, &["commit", "-m", "Prepare fixture release notes"])?;
+    git(&project, &["push", "origin", "master"])?;
+    let mut fixture = ReleaseFixture::new(project)?;
     fixture.configure_workflow(|workflow| {
         workflow.components.validator = Arc::new(CommandValidator {
-            commands: vec![vec!["cargo".into(), "check".into(), "--locked".into()]],
+            commands: vec![
+                vec!["cargo".into(), "check".into(), "--locked".into()],
+                vec!["cargo".into(), "xtask".into(), "docs".into()],
+            ],
         });
         Ok(())
     });
@@ -133,53 +158,84 @@ fn release_fixture_updates_metadata_and_native_uploads_recover_without_overwriti
     assert_eq!(fixture.registry.publication_count(), 1);
     assert_eq!(fixture.host.publication_count(), 1);
     for (file, expected) in [
-        ("Cargo.toml", "version = \"0.2.0\""),
-        ("action.yml", "default: v0.2.0"),
-        ("scripts/action.sh", "INPUT_VERSION:-v0.2.0"),
-        ("rcr.toml", "next-version = \"0.3.0\""),
-        ("CHANGELOG.md", "## 0.2.0 (Next)"),
-        (".github/ci-version", "v0.1.0\n"),
-        ("README.md", "already-tested@v0.1.0"),
-        ("DESIGN.md", "currently `v0.2.0`"),
+        ("Cargo.toml", format!("version = \"{next}\"")),
+        (
+            "Cargo.lock",
+            format!("\nname = \"already-tested\"\nversion = \"{next}\"\n"),
+        ),
+        ("action.yml", format!("default: v{next}")),
+        ("scripts/action.sh", format!("INPUT_VERSION:-v{next}")),
+        ("CHANGELOG.md", "## [Unreleased]".into()),
+        (".github/ci-version", format!("v{released}\n")),
+        ("README.md", format!("already-tested@v{released}")),
+        (
+            "README.md",
+            format!("releases/download/v{released}/install.sh"),
+        ),
+        (
+            "README.md",
+            format!("releases/download/v{released}/install.ps1"),
+        ),
+        ("README.md", format!("--version v{released}")),
+        ("README.md", format!("-Version v{released}")),
     ] {
         let contents = String::from_utf8(fixture.remote_file("master", Path::new(file))?)?;
-        assert!(contents.contains(expected), "{file}: {contents}");
+        assert!(contents.contains(&expected), "{file}: {contents}");
     }
+    let released_changelog = String::from_utf8(
+        fixture.remote_file(&format!("v{released}"), Path::new("CHANGELOG.md"))?,
+    )?;
+    assert!(released_changelog.contains(&format!("## [{released}] - ")));
+    assert!(!released_changelog.contains("## [Unreleased]"));
+    let development_changelog =
+        String::from_utf8(fixture.remote_file("master", Path::new("CHANGELOG.md"))?)?;
+    assert!(development_changelog.contains(&format!(
+        "[Unreleased]: https://github.com/dblock/already-tested/compare/v{released}...master"
+    )));
     let project = &fixture.project;
-    let mock = native_assets(project)?;
+    checked(
+        Command::new(env!("CARGO_BIN_EXE_xtask"))
+            .arg("release-metadata")
+            .current_dir(project.root())
+            .env("RCR_RELEASE_VERSION", &version)
+            .env("RCR_NEXT_VERSION", next.to_string())
+            .output()?,
+    )?;
+    git(project, &["diff", "--exit-code", "HEAD"])?;
+    let mock = native_assets(project, &version)?;
     fs::write(mock.join("fail-upload"), "")?;
-    assert!(!upload(project, &mock, &source)?.status.success());
+    assert!(!upload(project, &mock, &source, &version)?.status.success());
     assert_eq!(fs::read_dir(mock.join("assets"))?.count(), 1);
     fs::write(
         project.root().join("scripts/install.sh"),
         "development installer\n",
     )?;
-    checked(upload(project, &mock, &source)?)?;
-    checked(upload(project, &mock, &source)?)?;
+    checked(upload(project, &mock, &source, &version)?)?;
+    checked(upload(project, &mock, &source, &version)?)?;
     assert_eq!(fs::read_dir(mock.join("assets"))?.count(), 14);
     assert_eq!(
         fs::read(mock.join("assets/install.sh"))?,
-        fixture.remote_file("v0.1.0", Path::new("scripts/install.sh"))?
+        fixture.remote_file(&format!("v{released}"), Path::new("scripts/install.sh"))?
     );
     fs::write(mock.join("assets/install.sh"), "changed remotely\n")?;
-    assert!(!upload(project, &mock, &source)?.status.success());
+    assert!(!upload(project, &mock, &source, &version)?.status.success());
     assert_eq!(
         fs::read_to_string(mock.join("assets/install.sh"))?,
         "changed remotely\n"
     );
     fs::write(
         mock.join("assets/install.sh"),
-        fixture.remote_file("v0.1.0", Path::new("scripts/install.sh"))?,
+        fixture.remote_file(&format!("v{released}"), Path::new("scripts/install.sh"))?,
     )?;
     let archive = mock.join("native/already-tested-x86_64-apple-darwin.tar.gz");
     let bytes = fs::read(&archive)?;
     fs::write(&archive, "corrupt\n")?;
-    assert!(!upload(project, &mock, &source)?.status.success());
+    assert!(!upload(project, &mock, &source, &version)?.status.success());
     fs::write(archive, bytes)?;
     fs::remove_file(mock.join("released"))?;
-    assert!(!upload(project, &mock, &source)?.status.success());
+    assert!(!upload(project, &mock, &source, &version)?.status.success());
     fs::write(mock.join("released"), "")?;
-    assert!(!upload(project, &mock, "HEAD")?.status.success());
+    assert!(!upload(project, &mock, "HEAD", &version)?.status.success());
     Ok(())
 }
 
@@ -193,21 +249,21 @@ fn release_fixture_updates_metadata_and_native_uploads_recover_without_overwriti
 )]
 fn invalid_metadata_hook_inputs_leave_action_defaults_unchanged() -> Result<()> {
     let project = project()?;
+    let package = CargoPackage::new(project.root())?;
+    let released = package.metadata()?.version;
+    let next = next_version(&released);
     let original = fs::read(project.root().join("action.yml"))?;
     let run = || {
         Command::new(env!("CARGO_BIN_EXE_xtask"))
             .arg("release-metadata")
             .current_dir(project.root())
-            .env("RCR_RELEASE_VERSION", "0.1.0")
-            .env("RCR_NEXT_VERSION", "0.2.0")
+            .env("RCR_RELEASE_VERSION", released.to_string())
+            .env("RCR_NEXT_VERSION", next.to_string())
             .output()
     };
     assert!(!run()?.status.success());
-    fs::write(
-        project.root().join("Cargo.toml"),
-        "[package]\nversion = \"0.2.0\"\n",
-    )?;
-    fs::write(project.root().join("rcr.toml"), "missing next version\n")?;
+    package.set_version(&next)?;
+    fs::remove_file(project.root().join("README.md"))?;
     assert!(!run()?.status.success());
     assert_eq!(fs::read(project.root().join("action.yml"))?, original);
     Ok(())

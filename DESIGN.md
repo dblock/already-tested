@@ -61,7 +61,7 @@ The composite Action invokes a platform-selected native binary. No separate CLI 
 | --- | --- |
 | `check` input | Required job/environment ID; must match CLI `--check` |
 | `files` input | Optional newline-separated Git pathspecs; must match CLI `--files` |
-| `version` input | Binary release; defaults to the Action's version, currently `v0.1.0` |
+| `version` input | Binary release; defaults to the Action's version |
 | `skip` output | String `true` for a matching claim; otherwise `false` |
 
 Use `if: steps.tested.outputs.skip != 'true'` on each replaceable step, with `tested` as the Action step ID. Pin a reviewed Action commit for immutable workflow dependencies.
@@ -91,16 +91,11 @@ Each GitHub Release also includes `install.sh` and `install.ps1` as downloadable
 
 Release orchestration uses rust-crate-release for exact Cargo archive publication, durable preservation, changelog updates, Git tags/commits, GitHub hosting, and next-development validation. A project metadata hook keeps Action defaults synchronized while pinning user references to the published version. Native archives are independently validated before publication, retained outside the checkout, and attached unchanged afterward with tagged installer scripts. Dylint setup and native asset publication live in Rust `xtask` commands; Actions retain cache handling and thin task calls. See [Releasing](RELEASING.md) for authorization, registry setup, direct-push requirements, and partial-release recovery.
 
-POSIX installation accepts `--version v0.1.0`, `--bin-dir PATH`, and `--print-target`; Windows accepts `-Version`, `-BinDir`, and `-PrintTarget`. Defaults: latest release and `~/.local/bin`. They do not modify shell profiles. Ordinary use requires Git; installation uses OS shell, HTTPS download, archive, and checksum facilities.
+POSIX installation accepts `--version VERSION`, `--bin-dir PATH`, and `--print-target`; Windows accepts `-Version`, `-BinDir`, and `-PrintTarget`. Defaults: latest release and `~/.local/bin`. They do not modify shell profiles. Ordinary use requires Git; installation uses OS shell, HTTPS download, archive, and checksum facilities.
 
 For a mirror or local archive test, set `ALREADY_TESTED_DOWNLOAD_BASE_URL` to an HTTPS directory or `file://` URL containing the archive and checksum. Other schemes are rejected; empty overrides use defaults. POSIX also accepts `ALREADY_TESTED_VERSION` and `ALREADY_TESTED_BIN_DIR`.
 
-For example, pin a CLI version or change its destination:
-
-```sh
-curl -fsSL https://github.com/dblock/already-tested/releases/download/v0.1.0/install.sh \
-  | sh -s -- --version v0.1.0 --bin-dir "$HOME/.local/bin"
-```
+See the [README](README.md) for version-pinned installation examples.
 
 `ALREADY_TESTED_BINARY` selects an already-built verifier for Action integration tests; ordinary users leave it unset.
 
