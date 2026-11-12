@@ -80,7 +80,9 @@ pub fn markdown(text: &str) -> Result<(), String> {
                 ));
             }
         }
-        let prose = !line.is_empty()
+        let reference = line.starts_with('[') && line.contains("]:");
+        let prose = !reference
+            && !line.is_empty()
             && !line.starts_with(['#', '-', '*', '>', '|', '<', ' '])
             && !line.chars().next().is_some_and(|c| c.is_ascii_digit());
         if prose && paragraph {
@@ -181,6 +183,7 @@ mod tests {
     #[test]
     fn validates_headings_paragraphs_and_code() {
         assert!(markdown("# Working on already-tested\n\nOne paragraph.\n\n## CLI and Claim Format\n\n```sh\nanything\nwrapped\n```\n").is_ok());
+        assert!(markdown("## [Unreleased]\n\n[Unreleased]: https://example.com/compare/v0.1.0...master\n[0.1.0]: https://example.com/releases/v0.1.0\n").is_ok());
         assert!(markdown("# Bad heading\n").is_err());
         assert!(markdown("# Bad Heading:\n").is_err());
         assert!(markdown("Wrapped\nparagraph.\n").is_err());

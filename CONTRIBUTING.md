@@ -29,11 +29,13 @@ For coverage, install `cargo-llvm-cov` 0.9.1 and the toolchain's `llvm-tools-pre
 
 Core tests use isolated real Git repositories, actual CLI/Action processes, SHA-1/SHA-256 object formats, and committed protocol conformance fixtures. Node is not required by tests. Maintenance tests cover heading/paragraph rules, YAML names, and platform selection. Package checks install real checksummed archives and test installed CLI/Action behavior.
 
-Release tests use rust-crate-release's `GitProject` and `ReleaseFixture` to copy the actual source, run its metadata hook through the real engine, and inspect released/development files in a disposable remote. Fixture validation uses a focused Cargo check; the outer suite runs full validation. Only native GitHub asset operations need a small local command fixture for interrupted uploads, retries, modified assets, and source/checksum mismatches. Dylint setup tests use real local archives and checksums, including rejected downloads preserving installed tools. Never test against live credentials or publish from validation.
+Release tests use rust-crate-release's `GitProject` and `ReleaseFixture` to copy the actual source, run its metadata hook through the real engine, and inspect released/development files in a disposable remote. Fixture validation uses focused Cargo and document checks; the outer suite runs full validation. Only native GitHub asset operations need a small local command fixture for interrupted uploads, retries, modified assets, and source/checksum mismatches. Dylint setup tests use real local archives and checksums, including rejected downloads preserving installed tools. Never test against live credentials or publish from validation.
 
 Keep Test, Coverage, Lint, and Package workflows separate, with explicit `matrix.entry` lists of compact inline objects, no generated axes or include/exclude. Coverage runs on Linux, macOS, and Windows and completes parallel Coveralls reporting; it always runs in CI so local claims cannot substitute for uploaded coverage. Prefer verified current stable tools while preserving supported targets.
 
 ## Local CI Claims
+
+Repository CI reads `.github/ci-version` and explicitly uses that released verifier before setting up Rust or running checks. It does not build a source verifier. Keep this pin on an available release even while Cargo and Action defaults advance to the next development version; failed installation or verification requests normal CI. Coverage always runs.
 
 Claim only complete commands actually passed, against exactly the committed source, on the matching OS/CPU. Use the built CLI after committing:
 
@@ -54,7 +56,7 @@ Keep one coherent PR commit and squash-merge. Never develop/push directly on `ma
 
 Amend task-owned commits without asking after verifying ownership, recording the remote tip, reconciling changes, and validating locally. Push with `--force-with-lease` against that recorded SHA; never plain force or another task's work.
 
-Keep Markdown paragraphs on one source line and headings/workflow display names in title case. Append meaningful changes to the Next changelog placeholder in linked PR/author format, predicting then verifying the PR number. Minor typos need no entry.
+Keep Markdown paragraphs on one source line and headings/workflow display names in title case. Add meaningful changes under `[Unreleased]` in the Keep a Changelog category that fits, using linked PR/author format and predicting then verifying the PR number. Minor typos need no entry.
 
 Include `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>` in AI-assisted commits; disclose AI authorship on behalf of `@dblock` in PRs/comments. Close issues through PR references, not manually.
 

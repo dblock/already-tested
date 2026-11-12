@@ -30,15 +30,15 @@ Use `<username>/<topic>` branches from `master` in the existing checkout; worktr
 
 Amend task-owned commits without asking after verifying ownership, recording remote tips, reconciling changes, and validating. Use `--force-with-lease` against the recorded SHA; never plain force or another task's work.
 
-Append meaningful changes above the Next placeholder in linked PR/author format; predict then verify the PR number. Minor typos need no entry. Include the Copilot co-author trailer and disclose AI authorship on behalf of `@dblock` in PRs/comments. Close issues through PR references.
+Add meaningful changes under `[Unreleased]` in the appropriate Keep a Changelog category, using linked PR/author format; predict then verify the PR number. Minor typos need no entry. Include the Copilot co-author trailer and disclose AI authorship on behalf of `@dblock` in PRs/comments. Close issues through PR references.
 
 Report pending CI without waiting after local validation. After authorized merges, prune-fetch and verify merged state and no dirty worktrees/unmerged work/dependents before cleaning task-owned worktrees/branches. Never delete active PR branches, dirty worktrees, or `master`.
 
 ## Versioning and Releases
 
-Verify GitHub publication before bumping; ask if uncertain. Keep an unpublished version unchanged. After release, bump in the change PR: features increment minor, reset patch for `0.x`, preserve patch for `1.x` onward. Breaking `0.x` changes increment minor/reset patch; ask before breaking `1.x`+ major bumps. Synchronize Cargo manifest/lock, Action version, and Next heading.
+Verify GitHub publication before bumping; ask if uncertain. Keep an unpublished version unchanged. After release, prepare the next patch development version. For intentional feature releases, increment minor, reset patch for `0.x`, preserve patch for `1.x` onward. Breaking `0.x` changes increment minor/reset patch; ask before breaking `1.x`+ major bumps. Synchronize Cargo manifest/lock and Action version, keeping pending notes under `[Unreleased]`.
 
-After authorized publication, rust-crate-release validates and pushes release/next-development commits directly to `master`; separately authorized release-identity protection configuration is required first. This is not permission for direct development pushes or protection changes. Keep Cargo/Action development versions and the new Next changelog heading synchronized; pin user examples and CI verifier inputs to the version actually published. Maintain the metadata hook and next-version policy in `rcr.toml`.
+After authorized publication, rust-crate-release validates and pushes release/next-development commits directly to `master`; separately authorized release-identity protection configuration is required first. This is not permission for direct development pushes or protection changes. Keep Cargo/Action development versions synchronized and retain a new `[Unreleased]` changelog section; pin user examples and CI verifier inputs to the version actually published. Maintain the metadata hook and use rust-crate-release's default next-patch policy without a `next-version` override. Avoid redundant version numbers in design/contributor prose.
 
 For released breaking changes, including `0.x`, add `UPGRADING.md` with source/target versions, before/after examples, and the introducing PR; link from README.
 

@@ -27,18 +27,6 @@ pub fn update(root: &Path, released: &str, next: &str) -> Result<()> {
     {
         return Err("Release and next versions must be stable and increasing".into());
     }
-    let future = Version::new(
-        next_version.major,
-        next_version
-            .minor
-            .checked_add(1)
-            .ok_or("Version overflow")?,
-        if next_version.major == 0 {
-            0
-        } else {
-            next_version.patch
-        },
-    );
     if !fs::read_to_string(root.join("Cargo.toml"))?.contains(&format!("\nversion = \"{next}\"\n"))
     {
         return Err("rcr must update Cargo.toml before the metadata hook".into());
@@ -51,9 +39,7 @@ pub fn update(root: &Path, released: &str, next: &str) -> Result<()> {
         "action.yml",
         "scripts/action.sh",
         "README.md",
-        "DESIGN.md",
         ".github/ci-version",
-        "rcr.toml",
     ] {
         let text = fs::read_to_string(root.join(file))?;
         let updated = match file {
@@ -67,25 +53,11 @@ pub fn update(root: &Path, released: &str, next: &str) -> Result<()> {
                 &format!("INPUT_VERSION:-v{released}"),
                 &format!("INPUT_VERSION:-v{next}"),
             )?,
-            "README.md" | "DESIGN.md" => {
-                let updated = published.replace_all(&text, |captures: &Captures<'_>| {
+            "README.md" => published
+                .replace_all(&text, |captures: &Captures<'_>| {
                     format!("{}{released}", &captures[1])
-                });
-                if file == "DESIGN.md" {
-                    replace_version(
-                        &updated,
-                        &format!("currently `v{released}`"),
-                        &format!("currently `v{next}`"),
-                    )?
-                } else {
-                    updated.into_owned()
-                }
-            }
-            "rcr.toml" => replace_version(
-                &text,
-                &format!("next-version = \"{next}\"\n"),
-                &format!("next-version = \"{future}\"\n"),
-            )?,
+                })
+                .into_owned(),
             _ => format!("v{released}\n"),
         };
         edits.push((root.join(file), updated));
