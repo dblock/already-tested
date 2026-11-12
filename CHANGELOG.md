@@ -4,6 +4,10 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+### Added
+
+- [#8](https://github.com/dblock/already-tested/pull/8): Show the published crates.io version in a README badge - [@dblock](https://github.com/dblock).
+
 ### Changed
 
 - [#3](https://github.com/dblock/already-tested/pull/3): Lead README setup with GitHub Actions and agent instructions, and document version-pinned release installers - [@dblock](https://github.com/dblock).
