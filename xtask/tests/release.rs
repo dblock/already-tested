@@ -1,6 +1,7 @@
 #![cfg(unix)]
 
 use rust_crate_release::{
+    changelog::{Changelog, KeepAChangelog},
     engine::CommandValidator,
     package::{CargoPackage, PackageProject},
     testing::{CopySelection, GitProject, ReleaseFixture},
@@ -64,6 +65,23 @@ fn git(project: &GitProject, args: &[&str]) -> Result<String> {
 
 fn next_version(version: &Version) -> Version {
     Version::new(version.major, version.minor, version.patch + 1)
+}
+
+fn prepare_fixture_notes(project: &GitProject) -> Result<()> {
+    let changelog = project.root().join("CHANGELOG.md");
+    let original = fs::read_to_string(&changelog)?;
+    let updated = original.replacen(
+        "## [Unreleased]\n",
+        "## [Unreleased]\n\n- Exercise the release lifecycle.\n",
+        1,
+    );
+    if updated != original {
+        fs::write(changelog, updated)?;
+        git(project, &["add", "CHANGELOG.md"])?;
+        git(project, &["commit", "-m", "Prepare fixture release notes"])?;
+        git(project, &["push", "origin", "master"])?;
+    }
+    Ok(())
 }
 
 fn native_assets(project: &GitProject, version: &str) -> Result<PathBuf> {
@@ -131,18 +149,7 @@ fn release_fixture_updates_metadata_and_native_uploads_recover_without_overwriti
     let released = CargoPackage::new(project.root())?.metadata()?.version;
     let next = next_version(&released);
     let version = released.to_string();
-    let changelog = project.root().join("CHANGELOG.md");
-    fs::write(
-        &changelog,
-        fs::read_to_string(&changelog)?.replacen(
-            "## [Unreleased]\n",
-            "## [Unreleased]\n\n- Exercise the release lifecycle.\n",
-            1,
-        ),
-    )?;
-    git(&project, &["add", "CHANGELOG.md"])?;
-    git(&project, &["commit", "-m", "Prepare fixture release notes"])?;
-    git(&project, &["push", "origin", "master"])?;
+    prepare_fixture_notes(&project)?;
     let mut fixture = ReleaseFixture::new(project)?;
     fixture.configure_workflow(|workflow| {
         workflow.components.validator = Arc::new(CommandValidator {
@@ -236,6 +243,33 @@ fn release_fixture_updates_metadata_and_native_uploads_recover_without_overwriti
     assert!(!upload(project, &mock, &source, &version)?.status.success());
     fs::write(mock.join("released"), "")?;
     assert!(!upload(project, &mock, "HEAD", &version)?.status.success());
+    Ok(())
+}
+
+#[test]
+#[cfg_attr(
+    dylint_lib = "general",
+    allow(
+        non_thread_safe_call_in_test,
+        reason = "The upstream disposable Git fixture reproduces release-prepared source."
+    )
+)]
+fn fixture_notes_accept_an_already_dated_release() -> Result<()> {
+    let project = project()?;
+    prepare_fixture_notes(&project)?;
+    let version = CargoPackage::new(project.root())?.metadata()?.version;
+    let changelog = project.root().join("CHANGELOG.md");
+    KeepAChangelog::default().release_file(&changelog, &version, "2026/01/01", None)?;
+    git(&project, &["add", "CHANGELOG.md"])?;
+    git(
+        &project,
+        &["commit", "--allow-empty", "-m", "Prepare release snapshot"],
+    )?;
+    let prepared = fs::read(&changelog)?;
+    let head = git(&project, &["rev-parse", "HEAD"])?;
+    prepare_fixture_notes(&project)?;
+    assert_eq!(fs::read(changelog)?, prepared);
+    assert_eq!(git(&project, &["rev-parse", "HEAD"])?, head);
     Ok(())
 }
 

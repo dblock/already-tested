@@ -4,6 +4,10 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+### Fixed
+
+- [#9](https://github.com/dblock/already-tested/pull/9): Allow release tests to run against an already-dated changelog during release validation - [@dblock](https://github.com/dblock).
+
 ### Added
 
 - [#8](https://github.com/dblock/already-tested/pull/8): Show the published crates.io version in a README badge - [@dblock](https://github.com/dblock).
