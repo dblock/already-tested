@@ -20,7 +20,9 @@ Use `cargo llvm-cov --locked --workspace --all-targets --summary-only` to inspec
 
 Keep all six platform binaries and both installer scripts in every GitHub Release. Preserve automatic native selection, HTTPS/checksum verification, failure-safe replacement, and CLI/claim/Action contracts across distribution changes. Do not claim cross-platform validation from only one local host; native CI validates other archives.
 
-Follow [local claim mappings](CONTRIBUTING.md#local-ci-claims). Claim only complete checks actually run in the correct OS/CPU, with honest command/environment metadata. Use all tracked files; regenerate after changes. Paste default disclosures adjacent without outer bullets or blank separators, with canonical comments hidden inline.
+Follow [local claim mappings](CONTRIBUTING.md#local-ci-claims). Claim only complete checks actually passed, with honest command/environment metadata. Evaluate environment eligibility per check: uncertainty about one platform must not cause you to omit other eligible claims. A successful `cargo xtask lint` covers both portable `lint` and `dylint` checks even when the local OS differs from their CI runner; disclose the actual local environment. Platform-specific checks still require the matching OS/CPU and applicable toolchain/environment policy. Never broaden a claim to cover untested platforms or checks.
+
+After validation and committing the tested source, generate and verify claims for every eligible completed check, then include them in the PR description when creating or updating the PR. Listing passed commands in a validation summary is not a substitute for claim blocks. Use all tracked files; regenerate after tracked changes. Preserve unrelated PR text and claims. Paste default disclosures adjacent without outer bullets or blank separators, with canonical comments hidden inline.
 
 ## Documentation and Git
 
