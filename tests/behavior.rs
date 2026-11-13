@@ -173,6 +173,7 @@ impl Repo {
             .env("GITHUB_OUTPUT", self.path().join(".git/output"))
             .env_remove("GITHUB_STEP_SUMMARY")
             .env("GITHUB_WORKSPACE", self.path())
+            .env("GITHUB_SHA", source)
             .env(
                 "GITHUB_WORKFLOW_REF",
                 format!("owner/project/{WORKFLOW}@refs/pull/1/merge"),
@@ -922,7 +923,7 @@ fn cli_disclosure_is_exact_and_display_metadata_is_inert() {
 }
 
 #[test]
-fn library_cli_and_action_complete_pr_head_and_description_edit_round_trip() {
+fn library_cli_and_action_complete_source_and_description_edit_round_trip() {
     let repo = Repo::new();
     let source = repo.git(&["rev-parse", "HEAD"]);
     let output = repo.cli(&["claim", "--workflow", WORKFLOW, "--check", "unit"]);
@@ -944,6 +945,85 @@ fn library_cli_and_action_complete_pr_head_and_description_edit_round_trip() {
     let (result, output) = repo.action(fresh.into(), &changed, &[]);
     assert!(result.status.success());
     assert_eq!(output, "skip=true\n");
+}
+
+#[test]
+fn action_verifies_queued_merge_content_not_pr_head_or_checkout() {
+    for (path, content) in [
+        ("src/base.rs", Some("new base source\n")),
+        ("src/add.rs", Some("changed base source\n")),
+        ("README.md", None),
+    ] {
+        let repo = Repo::new();
+        let base = repo.git(&["rev-parse", "HEAD"]);
+        repo.write("src/pr.rs", "PR source\n");
+        let source = repo.commit();
+        let claim = repo.claim();
+        repo.git(&["checkout", "-qb", "target", &base]);
+        if let Some(content) = content {
+            repo.write(path, content);
+        } else {
+            repo.git(&["rm", "--", path]);
+        }
+        repo.commit();
+        repo.git(&["merge", "--no-ff", "-qm", "Merge PR", &source]);
+        let merged = repo.git(&["rev-parse", "HEAD"]);
+        let merged_claim = repo.claim();
+        repo.git(&["checkout", "-q", "--detach", &source]);
+        let index = fs::read(repo.path().join(".git/index")).unwrap();
+        let status = repo.git(&["status", "--porcelain"]);
+        let summary = repo.path().join(".git/summary");
+        for (body, expected) in [(claim, "skip=false\n"), (merged_claim, "skip=true\n")] {
+            repo.write(".git/summary", "");
+            let (result, output) = repo.action(
+                body.into(),
+                &source,
+                &[
+                    ("GITHUB_SHA", Some(&merged)),
+                    ("GITHUB_WORKFLOW_SHA", Some(&merged)),
+                    ("GITHUB_STEP_SUMMARY", Some(summary.to_str().unwrap())),
+                ],
+            );
+            assert!(result.status.success());
+            assert_eq!(output, expected, "{path}");
+            assert!(fs::read_to_string(&summary).unwrap().contains(&merged));
+        }
+        assert_eq!(repo.git(&["rev-parse", "HEAD"]), source);
+        assert_eq!(repo.git(&["status", "--porcelain"]), status);
+        assert_eq!(fs::read(repo.path().join(".git/index")).unwrap(), index);
+    }
+}
+
+#[test]
+fn action_reuses_claims_for_equivalent_merge_content_and_unselected_base_changes() {
+    for filtered in [false, true] {
+        let repo = Repo::new();
+        let base = repo.git(&["rev-parse", "HEAD"]);
+        repo.write("src/pr.rs", "PR source\n");
+        let source = repo.commit();
+        let mut options = repo.options();
+        let files = if filtered { "src/**" } else { "" };
+        if filtered {
+            options.files = vec![files.into()];
+        }
+        let claim = create_claim(&options).unwrap();
+        repo.git(&["checkout", "-qb", "target", &base]);
+        if filtered {
+            repo.write("README.md", "unselected base changes\n");
+            repo.commit();
+        } else {
+            repo.git(&["commit", "--allow-empty", "-qm", "Base metadata"]);
+        }
+        repo.git(&["merge", "--no-ff", "-qm", "Merge PR", &source]);
+        let merged = repo.git(&["rev-parse", "HEAD"]);
+        let (result, output) = repo.action(
+            claim.into(),
+            &source,
+            &[("GITHUB_SHA", Some(&merged)), ("INPUT_FILES", Some(files))],
+        );
+        assert!(result.status.success());
+        assert_eq!(output, "skip=true\n");
+    }
 }
 
 #[test]
@@ -1249,6 +1329,10 @@ fn action_summaries_explain_fallbacks_without_guessing_why_a_claim_is_stale() {
             "Only pull-request events can skip CI.",
         ),
         (
+            ("GITHUB_SHA", None),
+            "The queued source commit ID is missing or invalid.",
+        ),
+        (
             ("GITHUB_WORKFLOW_SHA", None),
             "The executing workflow commit ID is missing or invalid.",
         ),
@@ -1354,6 +1438,9 @@ fn action_fails_safe_for_untrusted_events_and_operational_failures_but_output_er
     for (name, value) in [
         ("GITHUB_EVENT_PATH", Some(missing)),
         ("GITHUB_EVENT_PATH", Some(invalid_event)),
+        ("GITHUB_SHA", None),
+        ("GITHUB_SHA", Some("")),
+        ("GITHUB_SHA", Some("HEAD")),
         ("GITHUB_WORKFLOW_REF", Some("")),
         ("GITHUB_WORKFLOW_REF", None),
         ("GITHUB_WORKFLOW_SHA", Some("")),

@@ -125,7 +125,7 @@ Only generate the first claim after actually running every covered test environm
 
 `--workflow`, `--check`, and repeated `--files` have the same meanings as the gate. Omitted `--check` defaults to `*`; quote globs. File paths passed to `--body-file` are relative to the current directory, while workflow and selection paths remain repository-relative. Claim-only display options and `--raw` are not accepted by `verify`.
 
-The verifier checks committed HEAD source and workflow, even when the working tree or index has changes. It never changes tracked files or the caller's index, runs tests, fetches Git objects, reads a PR from GitHub, or edits its description. A local match does not cover uncommitted changes or guarantee a match against a different [executing workflow revision](github-actions.md#events-and-checkout).
+The verifier checks committed HEAD source and workflow, even when the working tree or index has changes. It never changes tracked files or the caller's index, runs tests, fetches Git objects, reads a PR from GitHub, or edits its description. A local match does not cover uncommitted changes or guarantee a match against GitHub's [queued merge content or executing workflow revision](github-actions.md#events-and-checkout).
 
 ### Exit Codes
 

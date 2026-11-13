@@ -54,7 +54,7 @@ already-tested claim --workflow .github/workflows/test.yml --check unit \
 
 Always include the executing workflow. Hash JSON `["already-tested",1,workflow,check,patterns]` plus LF. For each file sorted by UTF-16 path order, hash JSON `[path,mode,byteLength]`, LF, then exactly that many raw blob bytes. Use SHA-256 and JavaScript-compatible compact JSON escaping. Commit IDs are not hash inputs; identical inputs across commits or Git object formats can reuse claims.
 
-The CLI rejects all staged/unstaged tracked changes, regardless of filters, and hashes HEAD. Ignored/untracked files are excluded: commit all intended inputs. The Action hashes PR-head source, not a synthetic merge tree, but uses the actual executing workflow commit. Base-workflow changes therefore invalidate old claims.
+The CLI rejects all staged/unstaged tracked changes, regardless of filters, and hashes HEAD. Ignored/untracked files are excluded: commit all intended inputs. The Action hashes the queued source commit from `GITHUB_SHA`, normally GitHub's synthetic PR merge, and uses the actual executing workflow commit from `GITHUB_WORKFLOW_SHA`. Base-branch changes to selected files or the executing workflow invalidate old claims. Different commit IDs alone do not invalidate identical covered content.
 
 Temporary Git indexes evaluate pathspecs without changing the caller's index. Read committed blobs, disable replacement objects, never execute claim text or working-tree filters, and never fetch automatically. Each Git command's output is capped at 64 MiB. Regular/executable/binary files work; selected symlinks, submodules, and invalid UTF-8 paths are errors.
 
@@ -79,7 +79,7 @@ Scope containment uses bounded deterministic automata over valid named IDs, not 
 
 For all-or-nothing job skipping, expose `skip` as a prerequisite job output and gate each covered job with `needs` and `if`. Include a status expression such as `!cancelled()` and test the prerequisite result so a failed verifier runs normal CI instead of silently skipping dependent jobs. Existing dependencies and conditions must remain intact. This pattern avoids allocating dependent runners but adds a prerequisite runner and scheduling delay when CI must run; it does not cancel the workflow or skip independent jobs. See [Skip All Remaining Jobs](docs/skip-jobs.md) for a complete workflow and agent instructions.
 
-Only `pull_request` events can skip CI. Trigger on `opened`, `synchronize`, `reopened`, and `edited`; use depth-2 checkout to retain PR-head and executing-workflow commits. Custom/reusable workflows must make those specific commits available too. Distinguish check IDs across jobs and environments.
+Only `pull_request` events can skip CI. Trigger on `opened`, `synchronize`, `reopened`, and `edited`; use depth-2 checkout to retain queued source and executing-workflow commits. Custom/reusable workflows must make those specific commits available too and test that same queued source; checkout HEAD cannot override verification. Missing or invalid source IDs request normal CI without falling back to PR head. Distinguish check IDs across jobs and environments.
 
 Missing/stale/malformed claims, missing objects, unsupported inputs, installation/download failures, and other operational verification errors request normal CI. Failure to write `GITHUB_OUTPUT` fails the Action instead of pretending to deliver a decision. Matching claims skip conditioned steps or dependent jobs, never the enclosing workflow itself.
 

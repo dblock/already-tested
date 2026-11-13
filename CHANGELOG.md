@@ -4,6 +4,10 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+### Fixed
+
+- [#22](https://github.com/dblock/already-tested/pull/22): Verify claims against the queued PR merge instead of PR head so untested base-branch changes run CI - [@dblock](https://github.com/dblock).
+
 ### Changed
 
 - [#19](https://github.com/dblock/already-tested/pull/19): Upgrade rust-crate-release to v0.1.2 to cache release-tool compilation dependencies without skipping release validation - [@dblock](https://github.com/dblock).

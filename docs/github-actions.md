@@ -102,9 +102,11 @@ Replace the test command with one supported on each runner. For example, after a
 
 Only `pull_request` events can skip work. Pushes always run CI, including on the default branch.
 
-`fetch-depth: 2` makes the PR-head commit available beneath GitHub's default merge checkout so the Action can hash it; full history (`0`) also works. The `edited` trigger reruns the workflow when an agent adds or updates claims in the PR description, without pushing another commit.
+Keep GitHub's default PR merge checkout. The Action hashes the queued source commit from `GITHUB_SHA`, normally a synthetic merge of the PR branch and its target branch, rather than the PR head alone. `fetch-depth: 2` retains the merge and its parents; full history (`0`) also works. The `edited` trigger reruns the workflow when an agent adds or updates claims in the PR description, without pushing another commit.
 
-Verification hashes PR-head source and the actual executing workflow, not arbitrary working-tree files. Custom checkout and reusable-workflow setups must make both required commits available; missing Git objects run normal CI.
+If the merge brings in changes to covered files or the actual executing workflow, a claim made only against PR-head content cannot skip CI. Identical covered content can still match despite different commit IDs, and changes outside an explicitly filtered selection do not invalidate it unless the executing workflow changes. To claim changed merged content, incorporate the target-branch changes locally, run the complete checks, and generate a fresh claim.
+
+Verification reads committed source at `GITHUB_SHA` and the workflow at `GITHUB_WORKFLOW_SHA`, not arbitrary working-tree files or checkout HEAD. Custom checkout and reusable-workflow setups must make both required commits available and ensure the gated tests use that same queued source. Do not use this gate to skip tests against a different custom checkout revision. Missing/invalid commit IDs or Git objects run normal CI without falling back to PR head.
 
 ## Inputs and Output
 
@@ -131,7 +133,7 @@ A matching claim produces a report like this:
 | --- | --- |
 | Workflow | `.github/workflows/test.yml` |
 | Gate | `test-linux` |
-| Source commit | `<PR-head SHA>` |
+| Source commit | `<queued merge SHA>` |
 | Matched claim | `test-*` |
 
 Claims are trusted statements, not proof that tests ran.

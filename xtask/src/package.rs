@@ -311,6 +311,7 @@ fn installed_consumer(
             .env("GITHUB_EVENT_NAME", "pull_request")
             .env("GITHUB_EVENT_PATH", &event)
             .env("GITHUB_WORKSPACE", root)
+            .env("GITHUB_SHA", head.trim())
             .env(
                 "GITHUB_ACTION_PATH",
                 source.to_string_lossy().replace('\\', "/"),
