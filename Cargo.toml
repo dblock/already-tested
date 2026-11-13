@@ -1,6 +1,6 @@
 [package]
 name = "already-tested"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.99"
 description = "Skip duplicate CI with trusted, content-matched local-test claims."
@@ -10,7 +10,7 @@ homepage = "https://github.com/dblock/already-tested"
 documentation = "https://github.com/dblock/already-tested/blob/master/docs/README.md"
 keywords = ["ci", "github-actions", "testing", "agents"]
 categories = ["command-line-utilities", "development-tools::testing"]
-include = ["src/**", "tests/**", "benches/**", "docs/**", "assets/logo.svg", "action.yml", "scripts/**", ".cargo/config.toml", "*.md", "LICENSE", "Cargo.lock"]
+include = ["src/**", "tests/**", "benches/**", "docs/**", "assets/logo.svg", "assets/agent-instructions.md", "action.yml", "scripts/**", ".cargo/config.toml", "*.md", "LICENSE", "Cargo.lock"]
 default-run = "already-tested"
 
 [[bench]]

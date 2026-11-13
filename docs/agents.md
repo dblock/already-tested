@@ -4,6 +4,14 @@
 
 Agent instructions must name the complete commands, workflow, check identity, and tested environments. Claims are trusted statements; never ask an agent to infer that tests passed or hide which environments actually ran.
 
+## Release-Matched Instructions
+
+`already-tested agent-instructions show` prints standalone consumer instructions bundled with the installed CLI version, offline and without a Git repository. The output identifies its version and covers honest claims, measured timing labels, verification, and publishing. It is not this project's contributor `AGENTS.md`.
+
+Every native archive also contains the same `agent-instructions.md`. Each release publishes that file and `agent-instructions.md.sha256` as separate assets for users without the CLI. Select an explicit release tag rather than a moving latest URL. These checksums detect corruption, not an untrusted release publisher.
+
+Keep project-specific commands, workflow/check mappings, and environment exceptions in your own `AGENTS.md`. Bundled guidance does not broaden project policy or establish environment equivalence. Installing or upgrading the CLI does not modify project instructions; review instruction changes alongside the matching CLI and CI-verifier upgrade.
+
 ## Named Checks
 
 Use this section with the [individual-step workflow](github-actions.md#complete-workflow). Replace the workflow, command, and environment with your project's values:
@@ -12,6 +20,7 @@ Use this section with the [individual-step workflow](github-actions.md#complete-
 ## Local CI Claims
 
 - Install `already-tested` if needed using https://github.com/dblock/already-tested/blob/master/docs/cli.md#installation.
+- Run `already-tested agent-instructions show` and follow its release-matched guidance for generating and publishing local CI claims.
 - Run the complete `./script/ci` check in the job's actual OS, CPU, and toolchain environment, unless the project's explicit environment policy permits a specific difference. Measure its wall-clock time during that run and round to the nearest whole second.
 - Commit the tested files and leave the tracked working tree clean.
 - Run `already-tested claim --workflow .github/workflows/test.yml --check test-linux --summary 'test-linux - passed (<seconds>s)' --command './script/ci' --environment '<actual OS, CPU, and toolchain versions>'`, replacing `<seconds>` with the measured elapsed time.

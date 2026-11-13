@@ -93,6 +93,11 @@ pub fn build(root: &Path, target: Option<&str>) -> Result<()> {
     let temporary = tempdir()?;
     fs::copy(&source, temporary.path().join(binary))?;
     fs::copy(root.join("LICENSE"), temporary.path().join("LICENSE"))?;
+    let instructions = invoke(&source, &["agent-instructions", "show"], root)?;
+    fs::write(
+        temporary.path().join("agent-instructions.md"),
+        &instructions,
+    )?;
     let directory = root.join("pkg");
     fs::create_dir_all(&directory)?;
     let archive_name = format!("already-tested-{target}.tar.gz");
@@ -106,6 +111,7 @@ pub fn build(root: &Path, target: Option<&str>) -> Result<()> {
             temporary.path().to_str().ok_or("Invalid temporary path")?,
             binary,
             "LICENSE",
+            "agent-instructions.md",
         ],
         root,
     )?;
@@ -116,8 +122,10 @@ pub fn build(root: &Path, target: Option<&str>) -> Result<()> {
     )?;
     let mut entries: Vec<_> = listing.lines().collect();
     entries.sort_unstable();
-    if entries != ["LICENSE", binary] {
-        return Err("Archive must contain exactly the executable and LICENSE".into());
+    let mut expected = vec!["LICENSE", binary, "agent-instructions.md"];
+    expected.sort_unstable();
+    if entries != expected {
+        return Err("Archive must contain the executable, LICENSE, and agent instructions".into());
     }
     let digest: String = Sha256::digest(fs::read(&archive)?)
         .iter()
@@ -159,6 +167,19 @@ pub fn build(root: &Path, target: Option<&str>) -> Result<()> {
         .into());
     }
     let executable = install.path().join(binary);
+    if run(
+        "tar",
+        &[
+            "-xOf",
+            archive.to_str().ok_or("Invalid archive path")?,
+            "agent-instructions.md",
+        ],
+        root,
+    )? != instructions
+        || invoke(&executable, &["agent-instructions", "show"], root)? != instructions
+    {
+        return Err("Archived and installed agent instructions must match".into());
+    }
     installed_consumer(&executable, version, root, &download_base)?;
     let previous = fs::read(&executable)?;
     let replaced = command.output()?;

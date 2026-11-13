@@ -225,9 +225,30 @@ fn release_fixture_updates_metadata_and_native_uploads_recover_without_overwriti
         project.root().join("scripts/install.sh"),
         "development installer\n",
     )?;
+    fs::write(
+        project.root().join("assets/agent-instructions.md"),
+        "development instructions\n",
+    )?;
     checked(upload(project, &mock, &source, &version)?)?;
     checked(upload(project, &mock, &source, &version)?)?;
-    assert_eq!(fs::read_dir(mock.join("assets"))?.count(), 14);
+    assert_eq!(fs::read_dir(mock.join("assets"))?.count(), 16);
+    let instructions = String::from_utf8(fixture.remote_file(
+        &format!("v{released}"),
+        Path::new("assets/agent-instructions.md"),
+    )?)?
+    .replace("{{VERSION}}", &version);
+    assert_eq!(
+        fs::read_to_string(mock.join("assets/agent-instructions.md"))?,
+        instructions
+    );
+    let digest: String = Sha256::digest(instructions.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    assert_eq!(
+        fs::read_to_string(mock.join("assets/agent-instructions.md.sha256"))?,
+        format!("{digest}  agent-instructions.md\n")
+    );
     assert_eq!(
         fs::read(mock.join("assets/install.sh"))?,
         fixture.remote_file(&format!("v{released}"), Path::new("scripts/install.sh"))?

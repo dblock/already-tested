@@ -2,6 +2,8 @@
 
 Read [Contributing](CONTRIBUTING.md) and [Design](DESIGN.md) before editing. Claims are trusted statements, not execution evidence. This Rust implementation must not require Node/npm or a compiler on end-user systems.
 
+Run `cargo run --locked -- agent-instructions show` and follow the release-matched consumer guidance before generating or updating local CI claims. Apply this repository's validation commands, check mappings, and environment policy below; keep those project-specific details separate from the bundled instructions.
+
 ## Implementation and Tests
 
 Keep shared protocol/verification logic in `src/`, integration fixtures in `tests/`, maintenance tooling in `xtask/`, and installers/Action adapter in `scripts/`. Use supported public Rust APIs and the pinned stable toolchain.

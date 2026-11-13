@@ -75,6 +75,7 @@ Add this complete section to your project's `AGENTS.md`, replacing the workflow 
 ## Local CI Claims
 
 - Install `already-tested` using https://github.com/dblock/already-tested/blob/master/docs/cli.md#installation.
+- Run `already-tested agent-instructions show` and follow its release-matched guidance for generating and publishing local CI claims.
 - Read `.github/workflows/test.yml` and identify every job covered by its prerequisite gate, including every matrix environment.
 - Run all covered jobs' complete commands: `./script/test` and `./script/lint`, with the same OS, CPU, and toolchain as each job. Measure the full sequence's wall-clock time during its final successful run and round to the nearest whole second. If any covered check or environment was not tested, do not make a blanket claim; let CI run.
 - Commit the tested files and leave the tracked working tree clean.

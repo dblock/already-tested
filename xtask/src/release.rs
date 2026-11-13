@@ -172,6 +172,22 @@ pub fn publish_native_assets(root: &Path) -> Result<()> {
         )?;
         files.push(path);
     }
+    let instructions = run(
+        "git",
+        &["show", &format!("{tag}:assets/agent-instructions.md")],
+        root,
+    )?
+    .replace("{{VERSION}}", &version);
+    let name = "agent-instructions.md";
+    let path = temporary.path().join(name);
+    fs::write(&path, &instructions)?;
+    let digest: String = Sha256::digest(instructions.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    let checksum = temporary.path().join(format!("{name}.sha256"));
+    fs::write(&checksum, format!("{digest}  {name}\n"))?;
+    files.extend([path, checksum]);
     let assets = run(
         "gh",
         &[
@@ -224,7 +240,7 @@ pub fn publish_native_assets(root: &Path) -> Result<()> {
         fs::remove_file(downloaded)?;
     }
     let message = format!(
-        "Uploaded or verified native assets for `{tag}`, including both installer scripts."
+        "Uploaded or verified native assets for `{tag}`, including installers and agent instructions."
     );
     if let Some(summary) = env::var_os("GITHUB_STEP_SUMMARY") {
         writeln!(
