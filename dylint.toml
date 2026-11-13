@@ -1,3 +1,3 @@
 [dylint-spellcheck]
-include = ["*.md"]
+include = ["*.md", "docs/**/*.md"]
 dictionaries = ["crate:dylint-spellcheck/data/en", ".spellcheck.txt"]

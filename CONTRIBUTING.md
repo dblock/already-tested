@@ -11,7 +11,7 @@ cargo xtask lint
 cargo xtask package
 ```
 
-Dylint is this repository's default framework for additional lint rules. CLI tools 6.4.0 fix driver builds after the Clippy default branch changed; the general-purpose suite and [dylint-spellcheck](https://github.com/dblock/dylint-spellcheck) remain independently pinned. Dylint provisions their nightly compiler without changing normal builds. `cargo xtask lint` runs formatting, Clippy, document checks, and all configured Dylint libraries, failing on warnings. Spelling covers Rust comments and root Markdown documents; review `.spellcheck.txt` vocabulary instead of accepting genuine typos.
+Dylint is this repository's default framework for additional lint rules. CLI tools 6.4.0 fix driver builds after the Clippy default branch changed; the general-purpose suite and [dylint-spellcheck](https://github.com/dblock/dylint-spellcheck) remain independently pinned. Dylint provisions their nightly compiler without changing normal builds. `cargo xtask lint` runs formatting, Clippy, document checks, and all configured Dylint libraries, failing on warnings. Spelling covers Rust comments, root Markdown documents, and `docs/`; review `.spellcheck.txt` vocabulary instead of accepting genuine typos.
 
 `cargo xtask setup-dylint` installs checksum-verified Dylint 6.4.0 binaries into Cargo's bin directory using curl and tar. It supports hosts with published upstream binaries; use the source installation above on other hosts. Both archives are checked before replacing installed tools.
 
@@ -55,6 +55,8 @@ Test check IDs are `test-ubuntu-latest`, `test-macos-latest`, and `test-windows-
 Use no file filters: repository CI hashes all tracked files. Paste unmodified default disclosures adjacent, without blank separators or outer bullets. Include actual command/environment; keep canonical claims hidden inline. Regenerate after tracked changes.
 
 ## Pull Requests
+
+Keep the README quick start concise and put detailed user examples in the [documentation](docs/README.md). DESIGN, CONTRIBUTING, and RELEASING remain at the repository root. Documentation checks validate nested pages and relative links; release metadata updates Action/installer pins in both README and `docs/`.
 
 Read [Design](DESIGN.md) and [Agent Instructions](AGENTS.md). Use `<username>/<topic>` branches from `master` in the existing checkout; worktrees are for parallel tasks only. Inspect status/worktrees and preserve unrelated changes.
 

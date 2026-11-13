@@ -176,15 +176,23 @@ fn release_fixture_updates_metadata_and_native_uploads_recover_without_overwriti
         (".github/ci-version", format!("v{released}\n")),
         ("README.md", format!("already-tested@v{released}")),
         (
-            "README.md",
+            "docs/cli.md",
             format!("releases/download/v{released}/install.sh"),
         ),
         (
-            "README.md",
+            "docs/cli.md",
             format!("releases/download/v{released}/install.ps1"),
         ),
-        ("README.md", format!("--version v{released}")),
-        ("README.md", format!("-Version v{released}")),
+        ("docs/cli.md", format!("--version v{released}")),
+        ("docs/cli.md", format!("-Version v{released}")),
+        (
+            "docs/github-actions.md",
+            format!("already-tested@v{released}"),
+        ),
+        (
+            "docs/configuration.md",
+            format!("already-tested@v{released}"),
+        ),
     ] {
         let contents = String::from_utf8(fixture.remote_file("master", Path::new(file))?)?;
         assert!(contents.contains(&expected), "{file}: {contents}");

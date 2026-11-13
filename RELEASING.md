@@ -1,5 +1,7 @@
 # Releasing
 
+We release using the principles of [Releases as Code](https://code.dblock.org/2026/11/12/releases-as-code.html).
+
 The manual Release workflow uses [rust-crate-release](https://github.com/dblock/rust-crate-release) to publish the exact verified Cargo archive to crates.io, push its release commit/tag, create a GitHub Release, and push the next development version. It then attaches all six native archives, their checksums, and both installer scripts. Installation still requires only the native binary, not Cargo.
 
 Publishing, tags, credentials, protection changes, and release dispatch each require explicit authorization. Adoption does not configure or authorize any of them.
@@ -32,7 +34,7 @@ After publication, verify the released version and checksum on crates.io, all na
 
 ## Next Development Version
 
-rust-crate-release updates the Cargo manifest/lock to the next patch development version, turns `[Unreleased]` into a dated release section, updates comparison links, and creates a fresh `[Unreleased]` section. The `cargo xtask release-metadata` bump hook synchronizes the Action defaults in `action.yml` and `scripts/action.sh` with that development version, while updating all README Action/installer references and `.github/ci-version` to the version actually published. Design and contributor prose avoid redundant version numbers.
+rust-crate-release updates the Cargo manifest/lock to the next patch development version, turns `[Unreleased]` into a dated release section, updates comparison links, and creates a fresh `[Unreleased]` section. The `cargo xtask release-metadata` bump hook synchronizes the Action defaults in `action.yml` and `scripts/action.sh` with that development version, while updating Action/installer references in README and `docs/` and `.github/ci-version` to the version actually published. Design and contributor prose avoid redundant version numbers.
 
 These edits are validated before the engine commits and pushes them directly to `master`; there is no next-version PR. Token-created pushes do not trigger ordinary CI, so release validation runs all configured tests, lint, and native package checks before that push. Independent platform checks still run for normal PRs.
 

@@ -12,6 +12,7 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ### Changed
 
+- [#15](https://github.com/dblock/already-tested/pull/15): Organize detailed user documentation and complete workflow examples under `docs/`, preserving root design and contributor guides - [@dblock](https://github.com/dblock).
 - [#14](https://github.com/dblock/already-tested/pull/14): Simplify scope verification and reuse committed snapshots across candidate claims to avoid repeated glob compilation and Git reads without changing matching behavior - [@dblock](https://github.com/dblock).
 - [#10](https://github.com/dblock/already-tested/pull/10): Explain agent test-run claims in the README introduction and link to the introductory blog post - [@dblock](https://github.com/dblock).
 

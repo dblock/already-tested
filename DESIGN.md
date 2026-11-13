@@ -73,7 +73,7 @@ Omit `check`, leave it empty, or explicitly set `check: '*'` to require coverage
 
 Scope containment uses bounded deterministic automata over valid named IDs, not matching glob text against other glob text or enumerating claims in the PR as an inventory. Compilation is limited to 1 MiB each for the DFA and determinization workspace; comparisons visit at most 16,384 state pairs and consider IDs up to 128 characters. Verification examines at most 32 distinct relevant scopes including the gate itself. Invalid or empty scopes and exceeded resource limits request normal CI.
 
-For all-or-nothing job skipping, expose `skip` as a prerequisite job output and gate each covered job with `needs` and `if`. Include a status expression such as `!cancelled()` and test the prerequisite result so a failed verifier runs normal CI instead of silently skipping dependent jobs. Existing dependencies and conditions must remain intact. This pattern avoids allocating dependent runners but adds a prerequisite runner and scheduling delay when CI must run; it does not cancel the workflow or skip independent jobs. See the [prerequisite job and agent instructions](README.md#prerequisite-job).
+For all-or-nothing job skipping, expose `skip` as a prerequisite job output and gate each covered job with `needs` and `if`. Include a status expression such as `!cancelled()` and test the prerequisite result so a failed verifier runs normal CI instead of silently skipping dependent jobs. Existing dependencies and conditions must remain intact. This pattern avoids allocating dependent runners but adds a prerequisite runner and scheduling delay when CI must run; it does not cancel the workflow or skip independent jobs. See [Skip All Remaining Jobs](docs/skip-jobs.md) for a complete workflow and agent instructions.
 
 Only `pull_request` events can skip CI. Trigger on `opened`, `synchronize`, `reopened`, and `edited`; use depth-2 checkout to retain PR-head and executing-workflow commits. Custom/reusable workflows must make those specific commits available too. Distinguish check IDs across jobs and environments.
 
@@ -104,7 +104,7 @@ POSIX installation accepts `--version VERSION`, `--bin-dir PATH`, and `--print-t
 
 For a mirror or local archive test, set `ALREADY_TESTED_DOWNLOAD_BASE_URL` to an HTTPS directory or `file://` URL containing the archive and checksum. Other schemes are rejected; empty overrides use defaults. POSIX also accepts `ALREADY_TESTED_VERSION` and `ALREADY_TESTED_BIN_DIR`.
 
-See the [README](README.md) for version-pinned installation examples.
+See the [CLI guide](docs/cli.md#installation) for version-pinned installation examples and the [documentation index](docs/README.md) for detailed user guides.
 
 `ALREADY_TESTED_BINARY` selects an already-built verifier for Action integration tests; ordinary users leave it unset.
 
