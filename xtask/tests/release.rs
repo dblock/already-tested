@@ -149,21 +149,43 @@ fn release_fixture_updates_metadata_and_native_uploads_recover_without_overwriti
     let released = CargoPackage::new(project.root())?.metadata()?.version;
     let next = next_version(&released);
     let version = released.to_string();
+    prepare_fixture_notes(&project)?;
+    KeepAChangelog::default().release_file(
+        &project.root().join("CHANGELOG.md"),
+        &released,
+        "2026/01/01",
+        None,
+    )?;
+    let installation =
+        regex::Regex::new(r"/blob/v[0-9]+\.[0-9]+\.[0-9]+/docs/cli\.md#installation")?;
     for file in ["README.md", "docs/skip-jobs.md"] {
         let path = project.root().join(file);
         let text = fs::read_to_string(&path)?;
-        let pinned = format!("/blob/v{released}/docs/cli.md#installation");
         assert!(
-            text.contains(&pinned),
-            "{file}: missing release-matched installation link"
+            installation.is_match(&text),
+            "{file}: missing release-tagged installation link"
         );
         fs::write(
             path,
-            text.replace(&pinned, "/blob/v0.0.0/docs/cli.md#installation"),
+            installation
+                .replace_all(&text, "/blob/v0.0.0/docs/cli.md#installation")
+                .as_ref(),
         )?;
     }
-    git(&project, &["add", "README.md", "docs/skip-jobs.md"])?;
-    prepare_fixture_notes(&project)?;
+    git(
+        &project,
+        &["add", "CHANGELOG.md", "README.md", "docs/skip-jobs.md"],
+    )?;
+    git(
+        &project,
+        &[
+            "commit",
+            "-m",
+            "Prepare dated fixture with stale installation links",
+        ],
+    )?;
+    git(&project, &["push", "origin", "master"])?;
+    assert!(git(&project, &["status", "--porcelain"])?.is_empty());
     let mut fixture = ReleaseFixture::new(project)?;
     fixture.configure_workflow(|workflow| {
         workflow.components.validator = Arc::new(CommandValidator {
