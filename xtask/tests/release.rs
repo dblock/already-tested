@@ -164,6 +164,24 @@ fn release_fixture_updates_metadata_and_native_uploads_recover_without_overwriti
     assert_eq!(fixture.release(None)?["verification"]["status"], "verified");
     assert_eq!(fixture.registry.publication_count(), 1);
     assert_eq!(fixture.host.publication_count(), 1);
+    let managed = fs::read_to_string(
+        fixture
+            .project
+            .root()
+            .join(".github/instructions/already-tested.instructions.md"),
+    )?;
+    let expected = fs::read_to_string(fixture.project.root().join("assets/agent-instructions.md"))?
+        .replace("{{VERSION}}", &next.to_string());
+    let digest: String = Sha256::digest(expected.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    assert_eq!(
+        managed,
+        format!(
+            "---\napplyTo: \"**\"\n---\n\n<!-- already-tested:managed sha256:{digest} -->\n{expected}"
+        )
+    );
     for (file, expected) in [
         ("Cargo.toml", format!("version = \"{next}\"")),
         (
@@ -174,6 +192,10 @@ fn release_fixture_updates_metadata_and_native_uploads_recover_without_overwriti
         ("scripts/action.sh", format!("INPUT_VERSION:-v{next}")),
         ("CHANGELOG.md", "## [Unreleased]".into()),
         (".github/ci-version", format!("v{released}\n")),
+        (
+            ".github/instructions/already-tested.instructions.md",
+            format!("<!-- already-tested:instructions v{next} -->"),
+        ),
         ("README.md", format!("already-tested@v{released}")),
         (
             "docs/cli.md",

@@ -433,6 +433,49 @@ fn installed_consumer(
             }
         }
     }
+    invoke(binary, &["agent-instructions", "update"], root)?;
+    let managed = fs::read_to_string(root.join(".already-tested/agent-instructions.md"))?;
+    let instructions = invoke(binary, &["agent-instructions", "show"], root)?;
+    if managed.split_once('\n').map(|(_, body)| body) != Some(instructions.as_str())
+        || !fs::read_to_string(root.join("AGENTS.md"))?
+            .contains(".already-tested/agent-instructions.md")
+    {
+        return Err("Installed instruction updates must match the bundled guide and create its agent reference".into());
+    }
+    let agent_policy = fs::read(root.join("AGENTS.md"))?;
+    fs::write(
+        root.join(".github/copilot-instructions.md"),
+        "# Copilot Policy\n",
+    )?;
+    invoke(binary, &["agent-instructions", "update"], root)?;
+    let copilot =
+        fs::read_to_string(root.join(".github/instructions/already-tested.instructions.md"))?;
+    if copilot
+        .strip_prefix("---\napplyTo: \"**\"\n---\n\n")
+        .and_then(|text| text.split_once('\n'))
+        .map(|(_, body)| body)
+        != Some(instructions.as_str())
+        || fs::read(root.join("AGENTS.md"))? != agent_policy
+        || !fs::read_to_string(root.join(".github/copilot-instructions.md"))?
+            .contains(".github/instructions/already-tested.instructions.md")
+    {
+        return Err(
+            "Installed instruction updates must detect Copilot without changing AGENTS.md".into(),
+        );
+    }
+    invoke(
+        binary,
+        &["agent-instructions", "update", "--path", "custom/guide.md"],
+        root,
+    )?;
+    if fs::read_to_string(root.join("custom/guide.md"))? != managed
+        || !fs::read_to_string(root.join(".github/copilot-instructions.md"))?
+            .contains("custom/guide.md")
+    {
+        return Err(
+            "Installed instruction path overrides must refresh the selected reference".into(),
+        );
+    }
     Ok(())
 }
 

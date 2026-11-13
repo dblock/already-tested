@@ -16,7 +16,7 @@ On crates.io, configure a trusted publisher for owner `dblock`, repository `alre
 
 ## Version and Validation
 
-Check crates.io and GitHub Releases before choosing a version. Keep an unpublished version unchanged. Follow [versioning rules](AGENTS.md#versioning-and-releases) and synchronize Cargo manifest/lock and Action binary version, keeping pending notes under `[Unreleased]`.
+Check crates.io and GitHub Releases before choosing a version. Keep an unpublished version unchanged. Follow [versioning rules](.github/copilot-instructions.md#versioning-and-releases) and synchronize Cargo manifest/lock and Action binary version, keeping pending notes under `[Unreleased]`.
 
 `rcr.toml` selects Keep a Changelog, all workspace tests, strict lint, and native package validation. No `next-version` override is needed: rust-crate-release defaults to the next patch version. The `[Unreleased]` comparison starts at the last published tag; dated historical sections describe only changes present in their release.
 
@@ -37,6 +37,8 @@ After publication, verify the released version and checksum on crates.io, all na
 Each native archive contains the consumer instructions printed by its executable through the `agent-instructions show` command. The source crate includes their template. Standalone instruction assets are rendered from that template at the release tag with the released version, never from next-development files. Upload recovery compares existing instruction assets just like archives and installers; changed published bytes are not overwritten.
 
 ## Next Development Version
+
+The metadata hook explicitly regenerates `.github/instructions/already-tested.instructions.md` and its reference in `.github/copilot-instructions.md` with the next development binary, so the body version and checksum stay synchronized. `AGENTS.md` points to the shared Copilot instructions. The hook does not override customized guides or handwritten policy.
 
 rust-crate-release updates the Cargo manifest/lock to the next patch development version, turns `[Unreleased]` into a dated release section, updates comparison links, and creates a fresh `[Unreleased]` section. The `cargo xtask release-metadata` bump hook synchronizes the Action defaults in `action.yml` and `scripts/action.sh` with that development version, while updating Action/installer references in README and `docs/` and `.github/ci-version` to the version actually published. Design and contributor prose avoid redundant version numbers.
 

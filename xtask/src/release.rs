@@ -77,6 +77,20 @@ pub fn update(root: &Path, released: &str, next: &str) -> Result<()> {
     for (path, text) in edits {
         fs::write(path, text)?;
     }
+    run(
+        "cargo",
+        &[
+            "run",
+            "--locked",
+            "--quiet",
+            "--bin",
+            "already-tested",
+            "--",
+            "agent-instructions",
+            "update",
+        ],
+        root,
+    )?;
     Ok(())
 }
 

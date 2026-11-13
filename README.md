@@ -4,7 +4,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/already-tested.svg)](https://crates.io/crates/already-tested) [![Test](https://github.com/dblock/already-tested/actions/workflows/test.yml/badge.svg)](https://github.com/dblock/already-tested/actions/workflows/test.yml) [![Coverage](https://github.com/dblock/already-tested/actions/workflows/coverage.yml/badge.svg)](https://github.com/dblock/already-tested/actions/workflows/coverage.yml) [![Lint](https://github.com/dblock/already-tested/actions/workflows/lint.yml/badge.svg)](https://github.com/dblock/already-tested/actions/workflows/lint.yml) [![Package](https://github.com/dblock/already-tested/actions/workflows/package.yml/badge.svg)](https://github.com/dblock/already-tested/actions/workflows/package.yml)
 
-Your AI agent already ran the tests and lints locally. Why make GitHub Actions repeat the same work? `already-tested` lets agents add local test-run claims to pull-request descriptions so CI can skip matching checks against the same committed files and workflow. Add a gate to your workflow and instructions to `AGENTS.md`; missing or stale claims run normal CI.
+Your AI agent already ran the tests and lints locally. Why make GitHub Actions repeat the same work? `already-tested` lets agents add local test-run claims to pull-request descriptions so CI can skip matching checks against the same committed files and workflow. Add a workflow gate and agent instructions; missing or stale claims run normal CI.
 
 Of course, anyone who can edit the pull-request description can forge a claim. Don't ever disable CI on `main`.
 
@@ -39,7 +39,7 @@ jobs:
 
 ## Usage
 
-Add this to your project's `AGENTS.md`:
+Add this to your project's `AGENTS.md` or `.github/copilot-instructions.md`:
 
 ```markdown
 ## Local CI Claims

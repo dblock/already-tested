@@ -2,7 +2,7 @@
 
 [Documentation](README.md) | [CLI Reference](cli.md)
 
-Agent instructions must name the complete commands, workflow, check identity, and tested environments. Claims are trusted statements; never ask an agent to infer that tests passed or hide which environments actually ran.
+The bundled guide tells agents how to inspect CI workflows, run complete checks, and publish honest claims. Keep only project-specific policy that CI does not describe in your own `AGENTS.md`.
 
 ## Release-Matched Instructions
 
@@ -10,34 +10,44 @@ Agent instructions must name the complete commands, workflow, check identity, an
 
 Every native archive also contains the same `agent-instructions.md`. Each release publishes that file and `agent-instructions.md.sha256` as separate assets for users without the CLI. Select an explicit release tag rather than a moving latest URL. These checksums detect corruption, not an untrusted release publisher.
 
-Keep project-specific commands, workflow/check mappings, and environment exceptions in your own `AGENTS.md`. Bundled guidance does not broaden project policy or establish environment equivalence. Installing or upgrading the CLI does not modify project instructions; review instruction changes alongside the matching CLI and CI-verifier upgrade.
+Bundled guidance does not broaden project policy or establish environment equivalence. Installing or upgrading the CLI does not modify project instructions; review instruction changes alongside the matching CLI and CI-verifier upgrade.
 
-## Named Checks
+### Adopt in a Project
 
-Use this section with the [individual-step workflow](github-actions.md#complete-workflow). Replace the workflow, command, and environment with your project's values:
+After installing a release with this command, run this once from anywhere inside the project's Git working tree:
 
-```markdown
-## Local CI Claims
-
-- Install `already-tested` if needed using https://github.com/dblock/already-tested/blob/master/docs/cli.md#installation.
-- Run `already-tested agent-instructions show` and follow its release-matched guidance for generating and publishing local CI claims.
-- Run the complete `./script/ci` check in the job's actual OS, CPU, and toolchain environment, unless the project's explicit environment policy permits a specific difference. Measure its wall-clock time during that run and round to the nearest whole second.
-- Commit the tested files and leave the tracked working tree clean.
-- Run `already-tested claim --workflow .github/workflows/test.yml --check test-linux --summary 'test-linux - passed (<seconds>s)' --command './script/ci' --environment '<actual OS, CPU, and toolchain versions>'`, replacing `<seconds>` with the measured elapsed time.
-- Paste the entire output into the PR description, preserving its hidden claim.
-- After tracked source or workflow changes, retest, commit, and replace the claim.
-- Never claim checks you did not run or assume an undocumented environment difference is acceptable; omit the claim and let CI run instead.
+```sh
+already-tested agent-instructions update
 ```
 
-For a macOS job, change both the workflow gate and claim command to `test-macos`; do not merely relabel a Linux run. The workflow path is repository-relative even when the agent runs the CLI from a subdirectory.
+The command uses the installed binary's bundled instructions and chooses the entry point at the Git working tree root:
 
-## Measured Check Time
+| Existing Instructions | Managed Guide | Reference Updated |
+| --- | --- | --- |
+| `.github/copilot-instructions.md` | `.github/instructions/already-tested.instructions.md` | `.github/copilot-instructions.md` |
+| Otherwise | `.already-tested/agent-instructions.md` | `AGENTS.md`, created if absent |
 
-Measure each complete check's wall-clock time during its final successful run, and append the result rounded to the nearest whole second to its disclosure label using `--summary`. For example, a lint command that took 28.7 seconds uses `--summary 'lint - passed (29s)'`. Replace example values and `<seconds>` placeholders with actual measurements; never guess elapsed time or rerun successful checks solely for timing.
+An existing Copilot entry point takes precedence even when `AGENTS.md` also exists; `AGENTS.md` is then left untouched. The generated Copilot guide includes `applyTo: "**"` front matter. The command adds or refreshes only its marked reference in the selected entry point, preserving handwritten policy. It does not fetch files, run tests, stage, or commit changes. Track both files so agents can read them offline.
 
-Measure the command or complete sequence named in `--command`, not the overall session, unrelated checks, or claim generation. When one aggregate command covers multiple checks, reuse its measured total for each disclosure and retain the actual aggregate command in `--command`; do not invent separate per-job times. For a blanket claim, measure the full covered sequence.
+Override the guide destination with a repository-relative file path, even when running from a subdirectory:
 
-The CLI records the supplied label; it does not execute or time `--command`. Timing is display metadata, not execution evidence or a hash input. Customize the summary through `--summary` and preserve the generated canonical claim.
+```sh
+already-tested agent-instructions update --path docs/local-ci.md
+```
+
+The override does not change which entry point receives the reference. Keep project-specific commands and environment policy outside the managed guide. Do not copy this repository's contributor instructions into another project.
+
+### Upgrade Instructions
+
+Upgrade to the chosen CLI release, align the Action and any separately pinned CI verifier, then explicitly run `already-tested agent-instructions update` again, repeating `--path` if you chose a custom destination. Review and commit both file diffs alongside those upgrades. Installing the CLI alone never rewrites either file. Changing destinations leaves old copies and references in other entry points for you to review and remove.
+
+An unchanged managed guide from an older release can be replaced offline. A body checksum detects local edits; it is not an authenticity guarantee. Updates refuse customized or unrecognized guides unless you deliberately pass `already-tested agent-instructions update --force`. Preserve local policy in the selected entry point before overriding. Symbolic links and targets that are not regular files are rejected even with `--force`, which never overrides handwritten policy or malformed reference markers. Each file is replaced atomically.
+
+## Project Setup
+
+Copy the [two-line agent setup](../README.md#usage) into your project's `AGENTS.md` or `.github/copilot-instructions.md`. The agent installs the CLI and reads its release-matched instructions; CI workflows remain the source of truth for commands, check names, and environments.
+
+The same setup works for [individual steps](github-actions.md) and [blanket gates](skip-jobs.md); separate claim-generation checklists are unnecessary.
 
 ## Environment Matching
 
@@ -69,78 +79,4 @@ For example, a maintainer may decide OS patch differences are acceptable for a p
 - Do not extend this exception to other checks, OS major/minor versions, architectures, or toolchains.
 ```
 
-Under that policy, after running the complete check on the permitted local environment and committing the tested files, the agent can generate:
-
-```sh
-already-tested claim \
-  --workflow .github/workflows/test.yml \
-  --check test-macos-26.6-arm64 \
-  --summary 'test-macos-26.6-arm64 - passed (<seconds>s)' \
-  --command './script/ci' \
-  --environment 'macOS 26.6.2, ARM64, <actual compiler/runtime and SDK versions>'
-```
-
-The check names the CI work the policy allows this run to cover; the environment names what actually ran. It does not say both OS versions were tested. Keep the approved policy visible in `AGENTS.md` so reviewers can understand the substitution.
-
 Use distinct check IDs such as `test-macos-26.6-arm64` and `test-macos-26.6-x86_64` when those environments must remain separate. Apply exceptions individually to every job covered by a glob or blanket claim. Permission for one macOS job does not justify claiming other matrix environments or all workflow checks.
-
-## Multiple Checks and Workflows
-
-After actually running both commands in their matching environments, an agent can generate separate claims:
-
-```sh
-already-tested claim \
-  --workflow .github/workflows/test.yml \
-  --check test-linux \
-  --summary 'test-linux - passed (<test-seconds>s)' \
-  --command './script/test' \
-  --environment '<actual Linux, CPU, and toolchain versions>'
-
-already-tested claim \
-  --workflow .github/workflows/lint.yml \
-  --check lint \
-  --summary 'lint - passed (<lint-seconds>s)' \
-  --command './script/lint' \
-  --environment '<actual OS, CPU, and lint-tool versions>'
-```
-
-Concatenate the complete outputs in the PR description without outer bullets or blank separators. Each claim binds its own workflow and selection policy. A claim for `test.yml` cannot satisfy a gate in `lint.yml`, even with the same check name.
-
-## All Covered Work
-
-For a prerequisite job, replace named-check instructions with the [complete blanket-claim instructions](skip-jobs.md#agent-instructions). Omitting `--check` means the agent claims all work covered by the workflow gate, including every matrix environment. Do not omit it when only one named check ran.
-
-For a [glob claim](configuration.md#check-globs), use a quoted pattern such as `--check 'test-*'` only after running every matching check. A claim's scope must cover the gate's entire scope; overlap or a collection of partial claims is not enough.
-
-## File Selection and Updates
-
-If the workflow uses `files`, add the same [file filters](configuration.md#file-selection) as repeated `--files` arguments. Commit all intended inputs: untracked and ignored files are not included. The tracked working tree must be clean even when the dirty file is outside the selection.
-
-After any tracked source or workflow edit, rerun the affected complete checks, commit, and replace stale claims. Commit identities alone are not hash inputs, but agents should not assume an existing claim remains valid after source changes.
-
-## Verify Before Publishing
-
-Agents can use [local verification](cli.md#verify-a-claim) to check their generated output before editing the PR description. For example, after running every test covered by `test-*` and committing the tested files:
-
-```sh
-claim_file=$(mktemp)
-already-tested claim \
-  --workflow .github/workflows/test.yml \
-  --check 'test-*' \
-  --summary 'test-* - passed (<seconds>s)' \
-  --command '<complete commands actually run>' \
-  --environment '<all actual tested OS, CPU, and toolchain versions>' > "$claim_file" &&
-already-tested verify \
-  --workflow .github/workflows/test.yml \
-  --check test-linux \
-  --body-file "$claim_file" \
-  --json &&
-cat "$claim_file"
-status=$?
-rm "$claim_file"
-(exit "$status")
-```
-
-Match the verification workflow, gate scope, and repeated `--files` arguments to the Action, not necessarily to the broader claim scope. Exit `0` means the claim matches committed HEAD; exit `1` means no match; exit `2` means an input or verification error. Never publish a claim as verified after either failure status, and never infer that verification ran tests or covered dirty files.
-
-The agent still handles GitHub access with its existing tools. Read the latest PR description, preserve human-written text and unrelated claims, and replace the old claim for the workflow/check being updated. The CLI only generates and verifies text; it does not fetch or edit PRs.

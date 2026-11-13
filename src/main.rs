@@ -15,6 +15,7 @@ const HELP: &str = "Usage: already-tested claim --workflow <path> [--ci <system>
        already-tested verify --workflow <path> [--ci <system>] [--check <identifier>] [--files <pattern> ...] [--body-file <path>] [--json]
        already-tested ci [--ci <system>] [--workflow <path>] [--check <identifier>] [--files <pattern> ...] [--body-file <path>]
        already-tested agent-instructions show
+       already-tested agent-instructions update [--path <path>] [--force]
 
 Run tests against committed source, then paste the generated expandable section into the PR description.
 Verify reads a claim or PR description from stdin or --body-file and checks committed HEAD.
@@ -30,6 +31,8 @@ Options:
   --raw                 Print only the canonical hidden claim, without display metadata
   --body-file <path>     Read UTF-8 claim text from a file instead of stdin (verification only)
   --json                Print a machine-readable verdict or error (verify only)
+  --path <path>         Repository-relative managed guide destination (instruction updates only)
+  --force               Replace a locally edited managed guide (instruction updates only)
   --help                Show this help
   --version             Show the package version
 
@@ -367,12 +370,44 @@ fn verify(values: &HashMap<String, String>, files: Vec<String>) -> Result<u8> {
 
 fn run(args: &[String]) -> Result<u8> {
     if args.first().is_some_and(|arg| arg == "agent-instructions") {
-        if args != ["agent-instructions", "show"] {
-            return Err("Usage: already-tested agent-instructions show".into());
+        match &args[1..] {
+            [show] if show == "show" => std::io::stdout()
+                .lock()
+                .write_all(instructions::bundled().as_bytes())?,
+            [update, options @ ..] if update == "update" => {
+                let mut options = options.iter().map(String::as_str);
+                let mut path = None;
+                let mut force = false;
+                while let Some(option) = options.next() {
+                    match option {
+                        "--force" if !force => force = true,
+                        "--path" if path.is_none() => {
+                            path = Some(
+                                options
+                                    .next()
+                                    .filter(|value| !value.starts_with('-'))
+                                    .ok_or("--path requires a value.")?,
+                            );
+                        }
+                        _ if path.is_none() && option.starts_with("--path=") => {
+                            path = option.strip_prefix("--path=");
+                        }
+                        _ => {
+                            return Err(
+                                format!("Invalid instruction update option: {option}").into()
+                            );
+                        }
+                    }
+                }
+                let (guide, policy) = instructions::update(path.map(Path::new), force)?;
+                println!("Updated {}\nUpdated {}", guide.display(), policy.display());
+            }
+            _ => {
+                return Err(
+                    "Usage: already-tested agent-instructions <show|update [--path <path>] [--force]>".into(),
+                );
+            }
         }
-        std::io::stdout()
-            .lock()
-            .write_all(instructions::bundled().as_bytes())?;
         return Ok(0);
     }
     if args == ["action"] {

@@ -69,23 +69,16 @@ The verifier only compares committed content, so its Linux runner can verify cla
 
 ## Agent Instructions
 
-Add this complete section to your project's `AGENTS.md`, replacing the workflow and commands:
+Add the same two-line setup to your project's `AGENTS.md` or `.github/copilot-instructions.md`:
 
 ```markdown
 ## Local CI Claims
 
 - Install `already-tested` using https://github.com/dblock/already-tested/blob/master/docs/cli.md#installation.
-- Run `already-tested agent-instructions show` and follow its release-matched guidance for generating and publishing local CI claims.
-- Read `.github/workflows/test.yml` and identify every job covered by its prerequisite gate, including every matrix environment.
-- Run all covered jobs' complete commands: `./script/test` and `./script/lint`, with the same OS, CPU, and toolchain as each job. Measure the full sequence's wall-clock time during its final successful run and round to the nearest whole second. If any covered check or environment was not tested, do not make a blanket claim; let CI run.
-- Commit the tested files and leave the tracked working tree clean.
-- Run `already-tested claim --workflow .github/workflows/test.yml --summary 'All workflow checks - passed (<seconds>s)' --command './script/test && ./script/lint' --environment '<actual OS, CPU, and toolchain versions>'`, replacing `<seconds>` with the measured elapsed time. Omit `--check` to claim the entire gate's scope.
-- Paste the entire output into the PR description, preserving its hidden claim.
-- Create a separate claim for each workflow you fully tested. Match any workflow file selection with repeated `--files` arguments.
-- After tracked source or workflow changes, rerun the covered checks, commit, and replace the claim.
+- Run `already-tested agent-instructions show` and follow its guidance before generating or updating claims.
 ```
 
-The CLI records your statement; it does not execute or time `--command`. Follow the [timing guidance](agents.md#measured-check-time); never invent elapsed time or rerun successful checks solely for timing. For a multi-platform workflow, record the actual commands and environments you used, not just the environment of the verifier.
+Omitting `--check` claims the entire gate's scope. The agent must run every covered job and matrix environment before making that blanket claim. If any covered work cannot be reproduced locally, let CI run or use a narrower gate; separate partial claims do not combine into a blanket claim.
 
 ## Existing Dependencies
 

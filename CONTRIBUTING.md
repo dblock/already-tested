@@ -11,7 +11,7 @@ cargo xtask lint
 cargo xtask package
 ```
 
-Dylint is this repository's default framework for additional lint rules. CLI tools 6.4.0 fix driver builds after the Clippy default branch changed; the general-purpose suite and [dylint-spellcheck](https://github.com/dblock/dylint-spellcheck) remain independently pinned. Dylint provisions their nightly compiler without changing normal builds. `cargo xtask lint` runs formatting, Clippy, document checks, and all configured Dylint libraries, failing on warnings. Spelling covers Rust comments, root Markdown documents, and `docs/`; review `.spellcheck.txt` vocabulary instead of accepting genuine typos.
+Dylint is this repository's default framework for additional lint rules. CLI tools 6.4.0 fix driver builds after the Clippy default branch changed; the general-purpose suite and [dylint-spellcheck](https://github.com/dblock/dylint-spellcheck) remain independently pinned. Dylint provisions their nightly compiler without changing normal builds. `cargo xtask lint` runs formatting, Clippy, document checks, and all configured Dylint libraries, failing on warnings. Spelling covers Rust comments, root Markdown documents, `docs/`, and `.github/copilot-instructions.md`; review `.spellcheck.txt` vocabulary instead of accepting genuine typos.
 
 `cargo xtask setup-dylint` installs checksum-verified Dylint 6.4.0 binaries into Cargo's bin directory using curl and tar. It supports hosts with published upstream binaries; use the source installation above on other hosts. Both archives are checked before replacing installed tools.
 
@@ -70,4 +70,4 @@ Include `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>` i
 
 After local validation, report pending CI without waiting. After authorized merges, prune-fetch, verify the GitHub merge, clean worktrees, and lack of unmerged work/dependents; switch to `master` and remove clean task-owned worktrees/merged branches. Never delete dirty worktrees, active PR branches, or `master`.
 
-Follow [versioning rules](AGENTS.md#versioning-and-releases) and [Releasing](RELEASING.md). The explicitly authorized standard release workflow publishes to crates.io and pushes validated release/development commits; it requires separately approved release-identity protection configuration. Normal development remains PR-only. Document released breaking changes, including `0.x`, in `UPGRADING.md` and link it from README.
+Follow [versioning rules](.github/copilot-instructions.md#versioning-and-releases) and [Releasing](RELEASING.md). The explicitly authorized standard release workflow publishes to crates.io and pushes validated release/development commits; it requires separately approved release-identity protection configuration. Normal development remains PR-only. Document released breaking changes, including `0.x`, in `UPGRADING.md` and link it from README.
