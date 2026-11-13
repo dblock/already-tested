@@ -12,15 +12,23 @@ Use this section with the [individual-step workflow](github-actions.md#complete-
 ## Local CI Claims
 
 - Install `already-tested` if needed using https://github.com/dblock/already-tested/blob/master/docs/cli.md#installation.
-- Run the complete `./script/ci` check in the job's actual OS, CPU, and toolchain environment, unless the project's explicit environment policy permits a specific difference.
+- Run the complete `./script/ci` check in the job's actual OS, CPU, and toolchain environment, unless the project's explicit environment policy permits a specific difference. Measure its wall-clock time during that run and round to the nearest whole second.
 - Commit the tested files and leave the tracked working tree clean.
-- Run `already-tested claim --workflow .github/workflows/test.yml --check test-linux --command './script/ci' --environment '<actual OS, CPU, and toolchain versions>'`.
+- Run `already-tested claim --workflow .github/workflows/test.yml --check test-linux --summary 'test-linux - passed (<seconds>s)' --command './script/ci' --environment '<actual OS, CPU, and toolchain versions>'`, replacing `<seconds>` with the measured elapsed time.
 - Paste the entire output into the PR description, preserving its hidden claim.
 - After tracked source or workflow changes, retest, commit, and replace the claim.
 - Never claim checks you did not run or assume an undocumented environment difference is acceptable; omit the claim and let CI run instead.
 ```
 
 For a macOS job, change both the workflow gate and claim command to `test-macos`; do not merely relabel a Linux run. The workflow path is repository-relative even when the agent runs the CLI from a subdirectory.
+
+## Measured Check Time
+
+Measure each complete check's wall-clock time during its final successful run, and append the result rounded to the nearest whole second to its disclosure label using `--summary`. For example, a lint command that took 28.7 seconds uses `--summary 'lint - passed (29s)'`. Replace example values and `<seconds>` placeholders with actual measurements; never guess elapsed time or rerun successful checks solely for timing.
+
+Measure the command or complete sequence named in `--command`, not the overall session, unrelated checks, or claim generation. When one aggregate command covers multiple checks, reuse its measured total for each disclosure and retain the actual aggregate command in `--command`; do not invent separate per-job times. For a blanket claim, measure the full covered sequence.
+
+The CLI records the supplied label; it does not execute or time `--command`. Timing is display metadata, not execution evidence or a hash input. Customize the summary through `--summary` and preserve the generated canonical claim.
 
 ## Environment Matching
 
@@ -58,6 +66,7 @@ Under that policy, after running the complete check on the permitted local envir
 already-tested claim \
   --workflow .github/workflows/test.yml \
   --check test-macos-26.6-arm64 \
+  --summary 'test-macos-26.6-arm64 - passed (<seconds>s)' \
   --command './script/ci' \
   --environment 'macOS 26.6.2, ARM64, <actual compiler/runtime and SDK versions>'
 ```
@@ -74,12 +83,14 @@ After actually running both commands in their matching environments, an agent ca
 already-tested claim \
   --workflow .github/workflows/test.yml \
   --check test-linux \
+  --summary 'test-linux - passed (<test-seconds>s)' \
   --command './script/test' \
   --environment '<actual Linux, CPU, and toolchain versions>'
 
 already-tested claim \
   --workflow .github/workflows/lint.yml \
   --check lint \
+  --summary 'lint - passed (<lint-seconds>s)' \
   --command './script/lint' \
   --environment '<actual OS, CPU, and lint-tool versions>'
 ```
@@ -107,6 +118,7 @@ claim_file=$(mktemp)
 already-tested claim \
   --workflow .github/workflows/test.yml \
   --check 'test-*' \
+  --summary 'test-* - passed (<seconds>s)' \
   --command '<complete commands actually run>' \
   --environment '<all actual tested OS, CPU, and toolchain versions>' > "$claim_file" &&
 already-tested verify \
