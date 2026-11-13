@@ -91,6 +91,8 @@ Hashes do not prove execution, environment equivalence, external state, dependen
 
 ## Binary Distribution
 
+`already-tested agent-instructions show` prints version-matched consumer guidance embedded from `assets/agent-instructions.md`, with no repository or network access. The source crate includes the template; native archives contain the rendered document alongside the executable and license. Release publication renders standalone instructions and their checksum from the tagged template. Project contributor instructions are separate; upgrading a binary does not edit downstream policy.
+
 | Platform | Target |
 | --- | --- |
 | Linux x86_64 | `x86_64-unknown-linux-musl` |

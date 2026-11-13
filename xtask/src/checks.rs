@@ -146,7 +146,11 @@ pub fn markdown_files(root: &Path) -> Result<Vec<PathBuf>, String> {
                 .map_err(|error| error.to_string())?
                 .is_dir()
             {
-                if directory != root || path == root.join("docs") {
+                if directory != root
+                    || ["docs", "assets"]
+                        .iter()
+                        .any(|name| path == root.join(name))
+                {
                     directories.push(path);
                 }
             } else if path.extension().is_some_and(|extension| extension == "md") {

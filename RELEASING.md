@@ -2,7 +2,7 @@
 
 We release using the principles of [Releases as Code](https://code.dblock.org/2026/11/12/releases-as-code.html).
 
-The manual Release workflow uses [rust-crate-release](https://github.com/dblock/rust-crate-release) to publish the exact verified Cargo archive to crates.io, push its release commit/tag, create a GitHub Release, and push the next development version. It then attaches all six native archives, their checksums, and both installer scripts. Installation still requires only the native binary, not Cargo.
+The manual Release workflow uses [rust-crate-release](https://github.com/dblock/rust-crate-release) to publish the exact verified Cargo archive to crates.io, push its release commit/tag, create a GitHub Release, and push the next development version. It then attaches all six native archives, their checksums, both installer scripts, and release-matched `agent-instructions.md` with its checksum. Installation still requires only the native binary, not Cargo.
 
 Publishing, tags, credentials, protection changes, and release dispatch each require explicit authorization. Adoption does not configure or authorize any of them.
 
@@ -32,7 +32,9 @@ Do not create the tag in advance: rust-crate-release dates the changelog and cre
 
 Native artifacts remain outside the checkout so next-development validation cannot replace them. After the crate release succeeds, `cargo xtask publish-native-assets` checks that the release tag differs from the native-build source only in `CHANGELOG.md`, verifies all six checksums, and uploads the retained archives and installers read from the tag. A missing or draft GitHub Release, or one marked `prerelease`, is rejected. Existing native assets must match downloaded bytes; changed assets are never overwritten.
 
-After publication, verify the released version and checksum on crates.io, all native assets, both versioned installer URLs, and the tag. Install using automatic selection and an explicit version. Verify Action installation against that same release, not a rebuilt tree or moving HEAD.
+After publication, verify the released version and checksum on crates.io, all native assets, both versioned installer URLs, instructions and their checksum, and the tag. Install using automatic selection and an explicit version. Verify Action installation against that same release, not a rebuilt tree or moving HEAD.
+
+Each native archive contains the consumer instructions printed by its executable through the `agent-instructions show` command. The source crate includes their template. Standalone instruction assets are rendered from that template at the release tag with the released version, never from next-development files. Upload recovery compares existing instruction assets just like archives and installers; changed published bytes are not overwritten.
 
 ## Next Development Version
 

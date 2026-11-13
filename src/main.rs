@@ -9,9 +9,12 @@ use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::Path;
 
+mod instructions;
+
 const HELP: &str = "Usage: already-tested claim --workflow <path> [--ci <system>] [--check <identifier>] [--files <pattern> ...]
        already-tested verify --workflow <path> [--ci <system>] [--check <identifier>] [--files <pattern> ...] [--body-file <path>] [--json]
        already-tested ci [--ci <system>] [--workflow <path>] [--check <identifier>] [--files <pattern> ...] [--body-file <path>]
+       already-tested agent-instructions show
 
 Run tests against committed source, then paste the generated expandable section into the PR description.
 Verify reads a claim or PR description from stdin or --body-file and checks committed HEAD.
@@ -363,6 +366,15 @@ fn verify(values: &HashMap<String, String>, files: Vec<String>) -> Result<u8> {
 }
 
 fn run(args: &[String]) -> Result<u8> {
+    if args.first().is_some_and(|arg| arg == "agent-instructions") {
+        if args != ["agent-instructions", "show"] {
+            return Err("Usage: already-tested agent-instructions show".into());
+        }
+        std::io::stdout()
+            .lock()
+            .write_all(instructions::bundled().as_bytes())?;
+        return Ok(0);
+    }
     if args == ["action"] {
         action(&HashMap::new(), Vec::new())?;
         return Ok(0);

@@ -26,7 +26,7 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
       - name: Check Local Claim
-        uses: dblock/already-tested@v0.2.0
+        uses: dblock/already-tested@v0.3.0
         id: tested
         with:
           check: test-linux
@@ -47,7 +47,7 @@ The Action automatically selects, downloads, and verifies its native binary. The
 
 ## Generate the Matching Claim
 
-After running the same complete check locally on Linux with the matching CPU and toolchain, commit the tested source and use the [CLI](cli.md):
+Install the matching [CLI](cli.md#installation), then run `already-tested agent-instructions show` for the release-matched guidance. After running the same complete check locally on Linux with the matching CPU and toolchain, commit the tested source and generate the claim:
 
 ```sh
 already-tested claim \
@@ -87,7 +87,7 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
-      - uses: dblock/already-tested@v0.2.0
+      - uses: dblock/already-tested@v0.3.0
         id: tested
         with:
           check: ${{ matrix.entry.check }}

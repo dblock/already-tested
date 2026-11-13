@@ -11,9 +11,10 @@ Use the same version for the CLI and workflow Action. When changing the installa
 ### macOS and Linux
 
 ```sh
-curl -fsSL https://github.com/dblock/already-tested/releases/download/v0.2.0/install.sh | sh -s -- --version v0.2.0
+curl -fsSL https://github.com/dblock/already-tested/releases/download/v0.3.0/install.sh | sh -s -- --version v0.3.0
 export PATH="$HOME/.local/bin:$PATH"
 already-tested --version
+already-tested agent-instructions show
 ```
 
 ### Windows
@@ -22,10 +23,11 @@ Run in PowerShell:
 
 ```powershell
 $installer = "$env:TEMP\already-tested-install.ps1"
-Invoke-WebRequest https://github.com/dblock/already-tested/releases/download/v0.2.0/install.ps1 -OutFile $installer
-& $installer -Version v0.2.0
+Invoke-WebRequest https://github.com/dblock/already-tested/releases/download/v0.3.0/install.ps1 -OutFile $installer
+& $installer -Version v0.3.0
 $env:PATH = "$HOME\.local\bin;$env:PATH"
 already-tested --version
+already-tested agent-instructions show
 ```
 
 The installer selects Linux, macOS, or Windows on x86_64/ARM64 and verifies the archive checksum and executable version before replacing an install. PATH changes above affect the current shell; add the directory to your shell profile for future sessions. Archive checksums detect corruption, not an untrusted release publisher.
@@ -33,14 +35,23 @@ The installer selects Linux, macOS, or Windows on x86_64/ARM64 and verifies the 
 ### Custom Installation Directory
 
 ```sh
-curl -fsSL https://github.com/dblock/already-tested/releases/download/v0.2.0/install.sh |
-  sh -s -- --version v0.2.0 --bin-dir "$HOME/tools/already-tested"
+curl -fsSL https://github.com/dblock/already-tested/releases/download/v0.3.0/install.sh |
+  sh -s -- --version v0.3.0 --bin-dir "$HOME/tools/already-tested"
 export PATH="$HOME/tools/already-tested:$PATH"
+already-tested agent-instructions show
 ```
 
 On Windows, pass `-BinDir "$HOME\tools\already-tested"` to the downloaded installer. The default directory is `~/.local/bin`. POSIX installers accept `--print-target`; Windows accepts `-PrintTarget` to inspect native target selection.
 
 For mirrors or archive tests, `ALREADY_TESTED_DOWNLOAD_BASE_URL` accepts an HTTPS directory or `file://` URL containing the archive and checksum. Other schemes are rejected; an empty override uses the default release URL. POSIX also accepts `ALREADY_TESTED_VERSION` and `ALREADY_TESTED_BIN_DIR`. See [binary distribution](../DESIGN.md#binary-distribution) for platform targets.
+
+## Agent Instructions
+
+```sh
+already-tested agent-instructions show
+```
+
+Print the consumer guidance bundled with the installed CLI version, offline and without Git or a repository. Read it before creating claims, and keep project-specific check mappings and environment policies in your own `AGENTS.md`. See [agent setup](agents.md#release-matched-instructions).
 
 ## CI Selection
 

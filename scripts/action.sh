@@ -5,7 +5,7 @@ binary=${ALREADY_TESTED_BINARY:-}
 if [ -z "$binary" ]; then
   if directory=$(mktemp -d "${RUNNER_TEMP:?RUNNER_TEMP is required}/already-tested.XXXXXX") &&
     sh "${GITHUB_ACTION_PATH:?GITHUB_ACTION_PATH is required}/scripts/install.sh" \
-      --version "${INPUT_VERSION:-v0.2.1}" --bin-dir "$directory"; then
+      --version "${INPUT_VERSION:-v0.3.0}" --bin-dir "$directory"; then
     binary="$directory/already-tested"
     [ ! -f "$directory/already-tested.exe" ] || binary="$directory/already-tested.exe"
   else

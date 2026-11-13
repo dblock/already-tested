@@ -28,7 +28,7 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
-      - uses: dblock/already-tested@v0.2.0
+      - uses: dblock/already-tested@v0.3.0
         id: tested
         with:
           check: test-linux
@@ -39,18 +39,16 @@ jobs:
 
 ## Usage
 
-Add this to your project's `AGENTS.md`, matching the command, workflow, and check to your CI:
+Add this to your project's `AGENTS.md`:
 
 ```markdown
 ## Local CI Claims
 
 - Install `already-tested` using https://github.com/dblock/already-tested/blob/master/docs/cli.md#installation.
-- Run the complete `./script/ci` check in the same OS, CPU, and toolchain environment as `test-linux`. Never claim checks or environments you did not test.
-- Commit the tested files and leave the tracked working tree clean.
-- Run `already-tested claim --workflow .github/workflows/test.yml --check test-linux --command './script/ci' --environment '<actual OS, CPU, and toolchain versions>'`.
-- Paste the entire output into the PR description, preserving its hidden claim.
-- After tracked source or workflow changes, retest, commit, and replace the claim.
+- Run `already-tested agent-instructions show` and follow its guidance before generating or updating claims.
 ```
+
+The agent installs the CLI, reads its release-matched guidance, and inspects your CI workflows. Keep any project-specific environment exceptions in your own instructions. See [agent setup](docs/agents.md) for details.
 
 ## Documentation
 

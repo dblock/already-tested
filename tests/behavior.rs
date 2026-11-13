@@ -1028,6 +1028,37 @@ fn cli_disclosure_is_exact_and_display_metadata_is_inert() {
 }
 
 #[test]
+fn instructions_are_release_matched_offline_and_do_not_need_a_repository() {
+    let directory = tempfile::tempdir().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_already-tested"))
+        .args(["agent-instructions", "show"])
+        .current_dir(directory.path())
+        .env("PATH", "")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        include_str!("../assets/agent-instructions.md")
+            .replace("{{VERSION}}", env!("CARGO_PKG_VERSION"))
+    );
+    for args in [
+        vec!["agent-instructions"],
+        vec!["agent-instructions", "show", "--workflow", WORKFLOW],
+    ] {
+        let invalid = Command::new(env!("CARGO_BIN_EXE_already-tested"))
+            .args(args)
+            .current_dir(directory.path())
+            .output()
+            .unwrap();
+        assert!(!invalid.status.success());
+        assert!(invalid.stdout.is_empty());
+    }
+    assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 0);
+}
+
+#[test]
 fn library_cli_and_action_complete_source_and_description_edit_round_trip() {
     let repo = Repo::new();
     let source = repo.git(&["rev-parse", "HEAD"]);
