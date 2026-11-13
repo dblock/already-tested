@@ -1,6 +1,6 @@
 use already_tested::{
-    Options, Verification, create_claim, head_commit, trim_js, valid_commit, verify_claim_details,
-    verify_committed_claim,
+    Ci, Options, Verification, create_claim, head_commit, trim_js, valid_commit,
+    verify_claim_details, verify_committed_claim,
 };
 use std::collections::HashMap;
 use std::env;
@@ -9,13 +9,15 @@ use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::Path;
 
-const HELP: &str = "Usage: already-tested claim --workflow <path> [--check <identifier>] [--files <pattern> ...]
-       already-tested verify --workflow <path> [--check <identifier>] [--files <pattern> ...] [--body-file <path>] [--json]
+const HELP: &str = "Usage: already-tested claim --workflow <path> [--ci <system>] [--check <identifier>] [--files <pattern> ...]
+       already-tested verify --workflow <path> [--ci <system>] [--check <identifier>] [--files <pattern> ...] [--body-file <path>] [--json]
+       already-tested ci [--ci <system>] [--workflow <path>] [--check <identifier>] [--files <pattern> ...] [--body-file <path>]
 
 Run tests against committed source, then paste the generated expandable section into the PR description.
 Verify reads a claim or PR description from stdin or --body-file and checks committed HEAD.
 
 Options:
+  --ci <system>         auto (default) or github-actions
   --workflow <path>      Tracked .github/workflows/*.yml or *.yaml file
   --check <identifier>   Check name or glob (default: * claims all work covered by the workflow gate)
   --files <pattern>      Git path pattern; repeat to select files (default: all tracked files)
@@ -23,12 +25,14 @@ Options:
   --command <text>       Command already validated; recorded, never executed
   --environment <text>   Environment actually validated; recorded, never inferred
   --raw                 Print only the canonical hidden claim, without display metadata
-  --body-file <path>     Read UTF-8 claim text from a file instead of stdin (verify only)
+  --body-file <path>     Read UTF-8 claim text from a file instead of stdin (verification only)
   --json                Print a machine-readable verdict or error (verify only)
   --help                Show this help
   --version             Show the package version
 
 Verify exit codes: 0 = match, 1 = no match, 2 = invalid input or verification error.
+Automatic CI selection currently defaults to GitHub Actions.
+The ci command publishes the selected CI system's skip output.
 ";
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -89,7 +93,15 @@ struct ActionReport {
     verification: Verification,
 }
 
-fn action_verdict() -> Result<Option<ActionReport>> {
+fn action_verdict(
+    values: &HashMap<String, String>,
+    files: Vec<String>,
+) -> Result<Option<ActionReport>> {
+    for name in ["raw", "summary", "command", "environment", "json"] {
+        if values.contains_key(name) {
+            return Err(format!("--{name} is not valid for ci.").into());
+        }
+    }
     if env::var("GITHUB_EVENT_NAME").as_deref() != Ok("pull_request") {
         return Ok(None);
     }
@@ -110,27 +122,45 @@ fn action_verdict() -> Result<Option<ActionReport>> {
         .captures(&workflow)
         .and_then(|c| c.get(1))
         .ok_or("workflow must be a file under .github/workflows/ ending in .yml or .yaml.")?;
-    let check = env::var("INPUT_CHECK").unwrap_or_default();
+    if let Some(expected) = values.get("workflow")
+        && expected != workflow.as_str()
+    {
+        return Err("--workflow does not match the executing GitHub Actions workflow.".into());
+    }
+    let check = values.get("check").cloned().unwrap_or_else(|| {
+        let check = env::var("INPUT_CHECK").unwrap_or_default();
+        if check.is_empty() { "*".into() } else { check }
+    });
     let mut options = Options::new(
         env::var_os("GITHUB_WORKSPACE")
             .map(std::path::PathBuf::from)
             .unwrap_or(env::current_dir()?),
         workflow.as_str(),
-        if check.is_empty() { "*" } else { &check },
+        check,
     );
+    options.ci = Ci::GitHubActions;
     options.r#ref = source;
     options.workflow_ref = Some(workflow_ref);
-    options.files = env::var("INPUT_FILES")
-        .unwrap_or_default()
-        .split('\n')
-        .map(trim_js)
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned)
-        .collect();
-    let verification = verify_claim_details(
-        event.pointer("/pull_request/body").and_then(|b| b.as_str()),
-        &options,
-    )?;
+    options.files = if files.is_empty() {
+        env::var("INPUT_FILES")
+            .unwrap_or_default()
+            .split('\n')
+            .map(trim_js)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .collect()
+    } else {
+        files
+    };
+    let body = if values.contains_key("body-file") {
+        Some(claim_text(values)?)
+    } else {
+        event
+            .pointer("/pull_request/body")
+            .and_then(|b| b.as_str())
+            .map(str::to_owned)
+    };
+    let verification = verify_claim_details(body.as_deref(), &options)?;
     Ok(Some(ActionReport {
         options,
         verification,
@@ -206,8 +236,8 @@ fn action_summary(verdict: &Result<Option<ActionReport>>) -> String {
     summary
 }
 
-fn action() -> Result<()> {
-    let verdict = action_verdict();
+fn action(values: &HashMap<String, String>, files: Vec<String>) -> Result<()> {
+    let verdict = action_verdict(values, files);
     let skip = match &verdict {
         Ok(Some(report)) => matches!(report.verification, Verification::Matched { .. }),
         Ok(None) => false,
@@ -256,6 +286,24 @@ fn read_claim_text(input: impl Read) -> Result<String> {
     Ok(String::from_utf8(bytes)?)
 }
 
+fn claim_text(values: &HashMap<String, String>) -> Result<String> {
+    if let Some(path) = values.get("body-file") {
+        read_claim_text(fs::File::open(path)?)
+    } else {
+        read_claim_text(std::io::stdin().lock())
+    }
+}
+
+fn selected_ci(values: &HashMap<String, String>) -> Result<Ci> {
+    Ok(values.get("ci").map_or("auto", String::as_str).parse()?)
+}
+
+fn ci(values: &HashMap<String, String>, files: Vec<String>) -> Result<u8> {
+    selected_ci(values)?.resolve()?;
+    action(values, files)?;
+    Ok(0)
+}
+
 fn verify(values: &HashMap<String, String>, files: Vec<String>) -> Result<u8> {
     for name in ["raw", "summary", "command", "environment"] {
         if values.contains_key(name) {
@@ -271,12 +319,9 @@ fn verify(values: &HashMap<String, String>, files: Vec<String>) -> Result<u8> {
         workflow,
         values.get("check").map_or("*", String::as_str),
     );
+    options.ci = selected_ci(values)?;
     options.files = files;
-    let body = if let Some(path) = values.get("body-file") {
-        read_claim_text(fs::File::open(path)?)?
-    } else {
-        read_claim_text(std::io::stdin().lock())?
-    };
+    let body = claim_text(values)?;
     let verification = verify_committed_claim(&body, &options)?;
     let (matched_check, reason, message) = match &verification {
         Verification::Matched { check } => (
@@ -319,7 +364,7 @@ fn verify(values: &HashMap<String, String>, files: Vec<String>) -> Result<u8> {
 
 fn run(args: &[String]) -> Result<u8> {
     if args == ["action"] {
-        action()?;
+        action(&HashMap::new(), Vec::new())?;
         return Ok(0);
     }
     let mut values = HashMap::new();
@@ -343,7 +388,7 @@ fn run(args: &[String]) -> Result<u8> {
                     }
                     values.insert(name.to_owned(), String::new());
                 }
-                "workflow" | "check" | "files" | "summary" | "command" | "environment"
+                "ci" | "workflow" | "check" | "files" | "summary" | "command" | "environment"
                 | "body-file" => {
                     let value = if let Some(value) = inline {
                         value.to_owned()
@@ -377,6 +422,8 @@ fn run(args: &[String]) -> Result<u8> {
         print!("{HELP}");
     } else if positionals == ["verify"] && args.first().is_some_and(|arg| arg == "verify") {
         return verify(&values, files);
+    } else if positionals == ["ci"] && args.first().is_some_and(|arg| arg == "ci") {
+        return ci(&values, files);
     } else {
         if positionals != ["claim"] {
             return Err(HELP.trim_end().into());
@@ -405,6 +452,7 @@ fn run(args: &[String]) -> Result<u8> {
             values.get("workflow").cloned().unwrap_or_default(),
             values.get("check").cloned().unwrap_or_else(|| "*".into()),
         );
+        options.ci = selected_ci(&values)?;
         options.files = files;
         let claim = create_claim(&options)?;
         let output = if values.contains_key("raw") {

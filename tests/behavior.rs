@@ -1,4 +1,4 @@
-use already_tested::{Options, Verification, create_claim, verify_claim, verify_claim_details};
+use already_tested::{Ci, Options, Verification, create_claim, verify_claim, verify_claim_details};
 use serde::Deserialize;
 use std::fs;
 use std::io::Write;
@@ -156,6 +156,16 @@ impl Repo {
         source: &str,
         extra: &[(&str, Option<&str>)],
     ) -> (Output, String) {
+        self.github(&["action"], body, source, extra)
+    }
+
+    fn github(
+        &self,
+        args: &[&str],
+        body: serde_json::Value,
+        source: &str,
+        extra: &[(&str, Option<&str>)],
+    ) -> (Output, String) {
         self.write(
             ".git/event.json",
             serde_json::to_vec(&serde_json::json!({
@@ -166,7 +176,7 @@ impl Repo {
         self.write(".git/output", "");
         let mut command = Command::new(env!("CARGO_BIN_EXE_already-tested"));
         command
-            .arg("action")
+            .args(args)
             .current_dir(self.path())
             .env("GITHUB_EVENT_NAME", "pull_request")
             .env("GITHUB_EVENT_PATH", self.path().join(".git/event.json"))
@@ -722,6 +732,99 @@ fn verify_cli_reads_claim_text_and_reports_matches_with_distinct_exit_codes() {
 }
 
 #[test]
+fn github_ci_policy_is_shared_by_the_library_and_cli_without_changing_v1_bytes() {
+    let repo = Repo::new();
+    let claim = repo.claim();
+    let mut options = repo.options();
+    options.ci = Ci::GitHubActions;
+    assert_eq!(create_claim(&options).unwrap(), claim);
+    assert!(verify_claim(Some(&claim), &options).unwrap());
+    for ci in ["auto", "github-actions"] {
+        let result = repo.cli(&[
+            "claim",
+            "--ci",
+            ci,
+            "--workflow",
+            WORKFLOW,
+            "--check",
+            "unit",
+            "--raw",
+        ]);
+        assert!(result.status.success());
+        assert_eq!(String::from_utf8(result.stdout).unwrap().trim_end(), claim);
+        let result = repo.cli_input(
+            &[
+                "verify",
+                "--ci",
+                ci,
+                "--workflow",
+                WORKFLOW,
+                "--check",
+                "unit",
+            ],
+            claim.as_bytes(),
+        );
+        assert!(result.status.success());
+    }
+}
+
+#[test]
+fn ci_defaults_to_github_and_preserves_the_action_compatibility_entry_point() {
+    let repo = Repo::new();
+    let head = repo.git(&["rev-parse", "HEAD"]);
+    for args in [
+        vec!["ci"],
+        vec!["ci", "--ci", "auto"],
+        vec!["ci", "--ci", "github-actions"],
+        vec!["action"],
+    ] {
+        let (result, output) = repo.github(&args, serde_json::json!(repo.claim()), &head, &[]);
+        assert!(result.status.success(), "{args:?}");
+        assert_eq!(output, "skip=true\n", "{args:?}");
+    }
+}
+
+#[test]
+fn github_ci_accepts_shared_options_without_overriding_the_executing_workflow() {
+    let repo = Repo::new();
+    let head = repo.git(&["rev-parse", "HEAD"]);
+    let mut options = repo.options();
+    options.check = "lint".into();
+    options.files = vec!["src/**".into()];
+    let claim = create_claim(&options).unwrap();
+    repo.write(".git/ci-body.md", claim);
+    let (result, output) = repo.github(
+        &[
+            "ci",
+            "--check",
+            "lint",
+            "--files",
+            "src/**",
+            "--workflow",
+            WORKFLOW,
+            "--body-file",
+            ".git/ci-body.md",
+        ],
+        serde_json::Value::Null,
+        &head,
+        &[("INPUT_FILES", Some("missing"))],
+    );
+    assert!(result.status.success());
+    assert_eq!(output, "skip=true\n");
+    for extra in [
+        vec!["--workflow", ".github/workflows/other.yml"],
+        vec!["--check", ""],
+        vec!["--json"],
+    ] {
+        let mut args = vec!["ci"];
+        args.extend(extra);
+        let (result, output) = repo.github(&args, serde_json::json!(repo.claim()), &head, &[]);
+        assert!(result.status.success());
+        assert_eq!(output, "skip=false\n");
+    }
+}
+
+#[test]
 fn verify_cli_errors_are_distinct_bounded_and_machine_readable() {
     let repo = Repo::new();
     let claim = repo.claim();
@@ -737,6 +840,8 @@ fn verify_cli_errors_are_distinct_bounded_and_machine_readable() {
         vec!["--workflow", WORKFLOW, "--command", "echo bad"],
         vec!["--workflow", WORKFLOW, "--summary", "passed"],
         vec!["--workflow", WORKFLOW, "--environment", "untested"],
+        vec!["--workflow", WORKFLOW, "--ci", "gitlab"],
+        vec!["--workflow", WORKFLOW, "--ci", ""],
         vec!["--workflow"],
         vec!["--typo"],
     ] {
