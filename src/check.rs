@@ -3,11 +3,12 @@ use globset::GlobBuilder;
 use regex_automata::{
     Anchored, Input,
     dfa::{Automaton, dense},
-    util::syntax,
+    util::{primitives::StateID, syntax},
 };
 use std::collections::{HashSet, VecDeque};
 
 const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.:/-";
+const MAX_LENGTH: usize = 128;
 const MAX_STATES: usize = 16_384;
 
 pub(crate) struct Scope(dense::DFA<Vec<u32>>);
@@ -15,11 +16,8 @@ pub(crate) struct Scope(dense::DFA<Vec<u32>>);
 impl Scope {
     pub(crate) fn new(pattern: &str) -> Result<Self> {
         if pattern.is_empty()
-            || pattern.len() > 128
-            || !pattern.is_ascii()
-            || pattern
-                .bytes()
-                .any(|b| b.is_ascii_whitespace() || b.is_ascii_control())
+            || pattern.len() > MAX_LENGTH
+            || !pattern.bytes().all(|byte| (b'!'..=b'~').contains(&byte))
         {
             return fail("check must be a nonempty ASCII glob of at most 128 characters.");
         }
@@ -44,29 +42,30 @@ impl Scope {
         Ok(scope)
     }
 
+    fn start(&self) -> Result<StateID> {
+        self.0
+            .start_state_forward(&Input::new(b"").anchored(Anchored::Yes))
+            .map_err(|error| Error(error.to_string()))
+    }
+
+    fn accepts(&self, state: StateID) -> bool {
+        self.0.is_match_state(self.0.next_eoi_state(state))
+    }
+
     pub(crate) fn covers(&self, gate: &Self) -> Result<bool> {
-        let input = Input::new(b"").anchored(Anchored::Yes);
-        let claim_start = self
-            .0
-            .start_state_forward(&input)
-            .map_err(|error| Error(error.to_string()))?;
-        let gate_start = gate
-            .0
-            .start_state_forward(&input)
-            .map_err(|error| Error(error.to_string()))?;
-        let mut pending = VecDeque::from([(claim_start, gate_start, 0)]);
+        let mut pending = VecDeque::from([(self.start()?, gate.start()?, 0)]);
         let mut seen = HashSet::new();
         let mut nonempty = false;
         // A counterexample is a valid check accepted by the gate but not the claim.
         // Breadth-first traversal retains the shortest path to each state pair.
         while let Some((claim, requested, length)) = pending.pop_front() {
-            if length > 0 && gate.0.is_match_state(gate.0.next_eoi_state(requested)) {
+            if length > 0 && gate.accepts(requested) {
                 nonempty = true;
-                if !self.0.is_match_state(self.0.next_eoi_state(claim)) {
+                if !self.accepts(claim) {
                     return Ok(false);
                 }
             }
-            if length == 128 {
+            if length == MAX_LENGTH {
                 continue;
             }
             for &byte in ALPHABET {

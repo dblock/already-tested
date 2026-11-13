@@ -209,14 +209,23 @@ struct Claim<'a> {
     hash: String,
 }
 
-fn snapshot(options: &Options) -> Result<String> {
+struct Snapshot {
+    patterns: Vec<String>,
+    entries: Vec<Entry>,
+    contents: Vec<u8>,
+}
+
+fn validate_identity(options: &Options) -> Result<check::Scope> {
     if !Regex::new(r"^\.github/workflows/[^/\\\x00\r\n]+\.ya?ml$")
         .unwrap()
         .is_match(&options.workflow)
     {
         return fail("workflow must be a file under .github/workflows/ ending in .yml or .yaml.");
     }
-    check::Scope::new(&options.check)?;
+    check::Scope::new(&options.check)
+}
+
+fn snapshot(options: &Options) -> Result<Snapshot> {
     let workflow_ref = options.workflow_ref.as_deref().unwrap_or(&options.r#ref);
     for value in [options.r#ref.as_str(), workflow_ref] {
         if value != "HEAD" && !valid_commit(value) {
@@ -266,18 +275,26 @@ fn snapshot(options: &Options) -> Result<String> {
             &[],
         )?;
     }
-    let workflow = entries(git(
-        root,
-        &[
-            "ls-files",
-            "--stage",
-            "-z",
-            "--",
-            &format!(":(top,literal){}", options.workflow),
-        ],
-        Some(&index),
-        &[],
-    )?)?;
+    let workflow = if workflow_ref == options.r#ref && patterns.is_empty() {
+        selected
+            .iter()
+            .filter(|entry| entry.path == options.workflow)
+            .cloned()
+            .collect()
+    } else {
+        entries(git(
+            root,
+            &[
+                "ls-files",
+                "--stage",
+                "-z",
+                "--",
+                &format!(":(top,literal){}", options.workflow),
+            ],
+            Some(&index),
+            &[],
+        )?)?
+    };
     if workflow.len() != 1 {
         return fail(format!("Workflow is not tracked: {}", options.workflow));
     }
@@ -303,56 +320,71 @@ fn snapshot(options: &Options) -> Result<String> {
         .map(|e| format!("{}\n", e.oid))
         .collect::<String>();
     let contents = git(root, &["cat-file", "--batch"], None, input.as_bytes())?;
-    let mut hash = Sha256::new();
-    hash.update(serde_json::to_vec(&(
-        "already-tested",
-        1,
-        &options.workflow,
-        &options.check,
+    Ok(Snapshot {
         patterns,
-    ))?);
-    hash.update(b"\n");
-    let mut offset = 0;
-    for entry in combined {
-        let end = contents
-            .get(offset..)
-            .and_then(|b| b.iter().position(|&b| b == b'\n'))
-            .map(|n| n + offset)
-            .ok_or_else(|| Error(format!("Cannot read committed file: {}", entry.path)))?;
-        let header = std::str::from_utf8(&contents[offset..end]).unwrap_or("");
-        let parts: Vec<_> = header.split(' ').collect();
-        let size = parts.get(2).and_then(|s| s.parse::<usize>().ok());
-        if parts.first() != Some(&entry.oid.as_str())
-            || parts.get(1) != Some(&"blob")
-            || size.is_none()
-        {
-            return fail(format!("Cannot read committed file: {}", entry.path));
-        }
-        let size = size.unwrap();
-        let start = end + 1;
-        let end = start
-            .checked_add(size)
-            .filter(|&n| n < contents.len())
-            .ok_or_else(|| Error(format!("Cannot read committed file: {}", entry.path)))?;
-        if contents[end] != b'\n' {
-            return fail(format!("Cannot read committed file: {}", entry.path));
-        }
-        hash.update(serde_json::to_vec(&(&entry.path, &entry.mode, size))?);
+        entries: combined,
+        contents,
+    })
+}
+
+impl Snapshot {
+    fn claim(&self, workflow: &str, check: &str) -> Result<String> {
+        let Self {
+            patterns,
+            entries,
+            contents,
+        } = self;
+        let mut hash = Sha256::new();
+        hash.update(serde_json::to_vec(&(
+            "already-tested",
+            1,
+            workflow,
+            check,
+            patterns,
+        ))?);
         hash.update(b"\n");
-        hash.update(&contents[start..end]);
-        offset = end + 1;
+        let mut offset = 0;
+        for entry in entries {
+            let end = contents
+                .get(offset..)
+                .and_then(|b| b.iter().position(|&b| b == b'\n'))
+                .map(|n| n + offset)
+                .ok_or_else(|| Error(format!("Cannot read committed file: {}", entry.path)))?;
+            let header = std::str::from_utf8(&contents[offset..end]).unwrap_or("");
+            let parts: Vec<_> = header.split(' ').collect();
+            let size = parts.get(2).and_then(|s| s.parse::<usize>().ok());
+            if parts.first() != Some(&entry.oid.as_str())
+                || parts.get(1) != Some(&"blob")
+                || size.is_none()
+            {
+                return fail(format!("Cannot read committed file: {}", entry.path));
+            }
+            let size = size.unwrap();
+            let start = end + 1;
+            let end = start
+                .checked_add(size)
+                .filter(|&n| n < contents.len())
+                .ok_or_else(|| Error(format!("Cannot read committed file: {}", entry.path)))?;
+            if contents[end] != b'\n' {
+                return fail(format!("Cannot read committed file: {}", entry.path));
+            }
+            hash.update(serde_json::to_vec(&(&entry.path, &entry.mode, size))?);
+            hash.update(b"\n");
+            hash.update(&contents[start..end]);
+            offset = end + 1;
+        }
+        let digest: String = hash
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        let claim = Claim {
+            workflow,
+            check,
+            hash: format!("sha256:{digest}"),
+        };
+        Ok(format!("{PREFIX}{} -->", serde_json::to_string(&claim)?))
     }
-    let digest: String = hash
-        .finalize()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect();
-    let claim = Claim {
-        workflow: &options.workflow,
-        check: &options.check,
-        hash: format!("sha256:{digest}"),
-    };
-    Ok(format!("{PREFIX}{} -->", serde_json::to_string(&claim)?))
 }
 
 /// Create a canonical v1 claim. Always uses HEAD for both source and workflow.
@@ -372,7 +404,8 @@ pub fn create_claim(options: &Options) -> Result<String> {
     let mut options = options.clone();
     options.r#ref = "HEAD".into();
     options.workflow_ref = None;
-    snapshot(&options)
+    validate_identity(&options)?;
+    snapshot(&options)?.claim(&options.workflow, &options.check)
 }
 
 /// Missing/unknown claims return false without reading Git. Operational failures
@@ -381,10 +414,11 @@ pub fn verify_claim(body: Option<&str>, options: &Options) -> Result<bool> {
     let Some(body) = body.filter(|b| b.contains(PREFIX)) else {
         return Ok(false);
     };
-    if body.contains(&snapshot(options)?) {
+    let gate = validate_identity(options)?;
+    let snapshot = snapshot(options)?;
+    if body.contains(&snapshot.claim(&options.workflow, &options.check)?) {
         return Ok(true);
     }
-    let gate = check::Scope::new(&options.check)?;
     let mut seen = std::collections::HashSet::from([options.check.clone()]);
     for (offset, _) in body.match_indices(PREFIX) {
         let part = &body[offset + PREFIX.len()..];
@@ -409,12 +443,8 @@ pub fn verify_claim(body: Option<&str>, options: &Options) -> Result<bool> {
         let Ok(scope) = check::Scope::new(check) else {
             continue;
         };
-        if scope.covers(&gate)? {
-            let mut claimed = options.clone();
-            claimed.check = check.into();
-            if body.contains(&snapshot(&claimed)?) {
-                return Ok(true);
-            }
+        if scope.covers(&gate)? && body.contains(&snapshot.claim(&options.workflow, check)?) {
+            return Ok(true);
         }
     }
     Ok(false)

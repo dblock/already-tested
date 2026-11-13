@@ -10,8 +10,12 @@ homepage = "https://github.com/dblock/already-tested"
 documentation = "https://github.com/dblock/already-tested/blob/master/DESIGN.md"
 keywords = ["ci", "github-actions", "testing", "agents"]
 categories = ["command-line-utilities", "development-tools::testing"]
-include = ["src/**", "tests/**", "assets/logo.svg", "action.yml", "scripts/**", ".cargo/config.toml", "*.md", "LICENSE", "Cargo.lock"]
+include = ["src/**", "tests/**", "benches/**", "assets/logo.svg", "action.yml", "scripts/**", ".cargo/config.toml", "*.md", "LICENSE", "Cargo.lock"]
 default-run = "already-tested"
+
+[[bench]]
+name = "claims"
+harness = false
 
 [workspace]
 members = ["xtask"]

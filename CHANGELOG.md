@@ -6,11 +6,13 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ### Added
 
+- [#14](https://github.com/dblock/already-tested/pull/14): Add reproducible claim-generation and verification benchmarks using real Git repositories - [@dblock](https://github.com/dblock).
 - [#12](https://github.com/dblock/already-tested/pull/12): Support check globs in claims and workflow gates, requiring each claim to cover the gate's entire scope - [@dblock](https://github.com/dblock).
 - [#11](https://github.com/dblock/already-tested/pull/11): Default to a blanket workflow claim and document a prerequisite job that skips dependent CI jobs before runner allocation - [@dblock](https://github.com/dblock).
 
 ### Changed
 
+- [#14](https://github.com/dblock/already-tested/pull/14): Simplify scope verification and reuse committed snapshots across candidate claims to avoid repeated glob compilation and Git reads without changing matching behavior - [@dblock](https://github.com/dblock).
 - [#10](https://github.com/dblock/already-tested/pull/10): Explain agent test-run claims in the README introduction and link to the introductory blog post - [@dblock](https://github.com/dblock).
 
 ## [0.1.1] - 2026-11-12
