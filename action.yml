@@ -3,14 +3,15 @@ description: Skip duplicate CI using trusted, content-matched local-test claims.
 author: dblock
 inputs:
   check:
-    description: Distinct check or matrix environment identifier.
-    required: true
+    description: Check identifier; omitted or empty means a literal '*' blanket claim for all work covered by the workflow gate.
+    default: '*'
+    required: false
   files:
     description: Newline-separated Git pathspecs; defaults to all tracked files plus the workflow.
     required: false
   version:
     description: Binary release version; defaults to the version of this Action.
-    default: v0.1.2
+    default: v0.2.0
     required: false
 outputs:
   skip:

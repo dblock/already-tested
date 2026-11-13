@@ -235,6 +235,11 @@ fn installed_consumer(
     if !claim.starts_with("<details>\n") || !claim.contains("<!-- already-tested:v1 ") {
         return Err("Installed CLI did not emit a complete claim".into());
     }
+    let blanket_claim = invoke(
+        binary,
+        &["claim", "--workflow", ".github/workflows/test.yml"],
+        root,
+    )?;
     let head = run("git", &["rev-parse", "HEAD"], root)?;
     let output = root.join("output");
     let event = root.join("event.json");
@@ -255,7 +260,6 @@ fn installed_consumer(
         };
         action
             .current_dir(root)
-            .env("INPUT_CHECK", "unit")
             .env("INPUT_VERSION", expected_version)
             .env("GITHUB_EVENT_NAME", "pull_request")
             .env("GITHUB_EVENT_PATH", &event)
@@ -273,10 +277,20 @@ fn installed_consumer(
             )
             .env("GITHUB_WORKFLOW_SHA", head.trim())
             .env("GITHUB_OUTPUT", &output);
-        for (body, expected) in [
-            (claim.as_str(), "skip=true\n"),
-            ("Claim removed.", "skip=false\n"),
+        for (check, body, expected) in [
+            (Some("unit"), claim.as_str(), "skip=true\n"),
+            (Some("unit"), "Claim removed.", "skip=false\n"),
+            (None, blanket_claim.as_str(), "skip=true\n"),
+            (Some(""), blanket_claim.as_str(), "skip=true\n"),
+            (Some("*"), blanket_claim.as_str(), "skip=true\n"),
+            (None, claim.as_str(), "skip=false\n"),
+            (Some("unit"), blanket_claim.as_str(), "skip=false\n"),
         ] {
+            if let Some(check) = check {
+                action.env("INPUT_CHECK", check);
+            } else {
+                action.env_remove("INPUT_CHECK");
+            }
             fs::write(
                 &event,
                 serde_json::to_vec(

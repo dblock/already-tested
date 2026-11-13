@@ -14,12 +14,13 @@ Rust implements the shared library, CLI, and `already-tested action` adapter. Gi
 already-tested claim --workflow .github/workflows/test.yml --check unit
 ```
 
-Paths are repository-relative even when called from a subdirectory. Workflows must be tracked `.yml`/`.yaml` files directly under `.github/workflows/`. Check IDs use 1-128 ASCII letters, numbers, periods, underscores, colons, slashes, or hyphens, beginning with a letter/number.
+Paths are repository-relative even when called from a subdirectory. Workflows must be tracked `.yml`/`.yaml` files directly under `.github/workflows/`. Named check IDs use 1-128 ASCII letters, numbers, periods, underscores, colons, slashes, or hyphens, beginning with a letter/number. Omitting `--check` defaults to the literal `*`: a trusted statement that all work covered by that workflow's gate ran. It is not a glob, an enumeration of named claims, or proof of completeness. Named and blanket claims only match their exact check identity.
 
 | Option | Meaning |
 | --- | --- |
+| `--check <identifier>` | Named check or literal `*`; default: `*` |
 | `--files <pattern>` | Repeat to select tracked files; default: all |
-| `--summary <text>` | Expandable label; default: `<check> - passed` |
+| `--summary <text>` | Expandable label; default: `<check> - passed`, or `All workflow checks - passed` for `*` |
 | `--command <text>` | Command actually validated; recorded, never executed |
 | `--environment <text>` | Tested project's toolchain/OS; never inferred |
 | `--raw` | Canonical comment only; incompatible with display metadata |
@@ -59,16 +60,20 @@ The composite Action invokes a platform-selected native binary. No separate CLI 
 
 | Input/Output | Meaning |
 | --- | --- |
-| `check` input | Required job/environment ID; must match CLI `--check` |
+| `check` input | Named check or literal `*`; omitted or empty defaults to `*`; must match the CLI check identity |
 | `files` input | Optional newline-separated Git pathspecs; must match CLI `--files` |
 | `version` input | Binary release; defaults to the Action's version |
 | `skip` output | String `true` for a matching claim; otherwise `false` |
 
 Use `if: steps.tested.outputs.skip != 'true'` on each replaceable step, with `tested` as the Action step ID. Pin a reviewed Action commit for immutable workflow dependencies.
 
+Omit `check`, leave it empty, or explicitly set `check: '*'` to verify a blanket claim. An agent must run all covered checks before generating that claim, including their required environments. No named claims are combined or inferred. Invalid nonempty IDs and verification errors request normal CI. Explicitly named checks retain their existing behavior and v1 claim bytes; blanket claims use the same framing and hash algorithm with `check` equal to `*`.
+
+For all-or-nothing job skipping, expose `skip` as a prerequisite job output and gate each covered job with `needs` and `if`. Include a status expression such as `!cancelled()` and test the prerequisite result so a failed verifier runs normal CI instead of silently skipping dependent jobs. Existing dependencies and conditions must remain intact. This pattern avoids allocating dependent runners but adds a prerequisite runner and scheduling delay when CI must run; it does not cancel the workflow or skip independent jobs. See the [prerequisite job and agent instructions](README.md#prerequisite-job).
+
 Only `pull_request` events can skip CI. Trigger on `opened`, `synchronize`, `reopened`, and `edited`; use depth-2 checkout to retain PR-head and executing-workflow commits. Custom/reusable workflows must make those specific commits available too. Distinguish check IDs across jobs and environments.
 
-Missing/stale/malformed claims, missing objects, unsupported inputs, installation/download failures, and other operational verification errors request normal CI. Failure to write `GITHUB_OUTPUT` fails the Action instead of pretending to deliver a decision. A matching claim skips conditioned steps, not the enclosing workflow/check.
+Missing/stale/malformed claims, missing objects, unsupported inputs, installation/download failures, and other operational verification errors request normal CI. Failure to write `GITHUB_OUTPUT` fails the Action instead of pretending to deliver a decision. Matching claims skip conditioned steps or dependent jobs, never the enclosing workflow itself.
 
 Hashes do not prove execution, environment equivalence, external state, dependencies outside selected files, or compatibility with a newer base. Preserve independent integration/platform checks and branch protection.
 

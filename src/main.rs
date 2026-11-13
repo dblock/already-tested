@@ -5,13 +5,13 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
-const HELP: &str = "Usage: already-tested claim --workflow <path> --check <identifier> [--files <pattern> ...]
+const HELP: &str = "Usage: already-tested claim --workflow <path> [--check <identifier>] [--files <pattern> ...]
 
 Run tests against committed source, then paste the generated expandable section into the PR description.
 
 Options:
   --workflow <path>      Tracked .github/workflows/*.yml or *.yaml file
-  --check <identifier>   Distinct identifier for the job or matrix environment
+  --check <identifier>   Job/environment identifier (default: * claims all work covered by the workflow gate)
   --files <pattern>      Git path pattern; repeat to select files (default: all tracked files)
   --summary <text>       Disclosure label (default: <check> - passed)
   --command <text>       Command already validated; recorded, never executed
@@ -44,7 +44,11 @@ fn format_claim(claim: &str, values: &HashMap<String, String>, cwd: &Path) -> Re
         .unwrap()
         .strip_prefix("sha256:")
         .unwrap();
-    let default = format!("{check} - passed");
+    let default = if check == "*" {
+        "All workflow checks - passed".to_owned()
+    } else {
+        format!("{check} - passed")
+    };
     let summary = values
         .get("summary")
         .unwrap_or(&default)
@@ -92,12 +96,13 @@ fn action_verdict() -> Result<bool> {
         .captures(&workflow)
         .and_then(|c| c.get(1))
         .ok_or("workflow must be a file under .github/workflows/ ending in .yml or .yaml.")?;
+    let check = env::var("INPUT_CHECK").unwrap_or_default();
     let mut options = Options::new(
         env::var_os("GITHUB_WORKSPACE")
             .map(std::path::PathBuf::from)
             .unwrap_or(env::current_dir()?),
         workflow.as_str(),
-        env::var("INPUT_CHECK").unwrap_or_default(),
+        if check.is_empty() { "*" } else { &check },
     );
     options.r#ref = source.into();
     options.workflow_ref = Some(workflow_ref);
@@ -219,7 +224,7 @@ fn run() -> Result<()> {
         let mut options = Options::new(
             &cwd,
             values.get("workflow").cloned().unwrap_or_default(),
-            values.get("check").cloned().unwrap_or_default(),
+            values.get("check").cloned().unwrap_or_else(|| "*".into()),
         );
         options.files = files;
         let claim = create_claim(&options)?;
