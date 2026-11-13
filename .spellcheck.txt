@@ -3,6 +3,7 @@ CLI
 Changelog
 Clippy
 DFA
+DevOps
 Dylint
 Dylint's
 HTTPS
@@ -17,6 +18,7 @@ POSIX
 PRs
 PowerShell
 README
+Repos
 SDK
 SHA
 SVG

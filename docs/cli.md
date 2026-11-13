@@ -62,14 +62,16 @@ already-tested agent-instructions update --force
 
 ## CI Selection
 
-`claim`, `verify`, and `ci` accept `--ci auto` (the default) or `--ci github-actions`. GitHub Actions is currently the only supported system, so automatic selection resolves to GitHub Actions both in CI and locally. Remotes, workflow filenames, and repository contents are not detection signals.
+`claim`, `verify`, and `ci` accept `--ci auto`, `--ci github-actions`, or `--ci azure-pipelines`. The default is `auto`: `GITHUB_ACTIONS=true` selects GitHub Actions, `TF_BUILD=True` selects Azure Pipelines, and neither signal falls back to GitHub Actions. Signal values are case-insensitive. If both are enabled, specify `--ci` explicitly; a conflicting environment never silently chooses one.
+
+An explicit choice overrides detection. Remotes, workflow filenames, and repository contents are not detection signals because a repository can use both systems. When generating or verifying Azure claims locally, pass `--ci azure-pipelines`:
 
 ```sh
-already-tested claim --ci github-actions --workflow .github/workflows/test.yml --check test-linux
-already-tested verify --ci auto --workflow .github/workflows/test.yml --check test-linux < claim.md
+already-tested claim --ci azure-pipelines --workflow azure-pipelines.yml --check test-linux
+already-tested verify --ci azure-pipelines --workflow azure-pipelines.yml --check test-linux < claim.md
 ```
 
-Only generate claims after running the named complete checks in their required environments. CI selection controls workflow validation and adapter routing, not the v1 claim/hash format.
+Only generate claims after running the named complete checks in their required environments. CI selection controls workflow validation and adapter routing, not the v1 claim/hash format. GitHub Actions requires a workflow directly under `.github/workflows/`; Azure Pipelines accepts safe repository-relative YAML paths.
 
 ### Rust API
 
@@ -78,12 +80,12 @@ The shared API uses the same policy through `Options.ci`, which defaults to `Ci:
 ```rust
 use already_tested::{Ci, Options, create_claim};
 
-let mut options = Options::new(".", ".github/workflows/test.yml", "test-linux");
-options.ci = Ci::GitHubActions;
+let mut options = Options::new(".", "azure-pipelines.yml", "test-linux");
+options.ci = Ci::AzurePipelines;
 let claim = create_claim(&options)?;
 ```
 
-`Ci::Auto.resolve()` returns `Ci::GitHubActions`. The existing claim and verification functions apply this policy without fetching data or running tests.
+`Ci::Auto.resolve()` returns the detected system or GitHub Actions fallback, and returns an error for conflicting signals. Explicit variants resolve without reading the environment. The existing claim and verification functions apply this policy without fetching data or running tests.
 
 ## Create a Claim
 
@@ -107,13 +109,13 @@ Copy the entire expandable output into the PR description, not into a comment or
 ## Options
 
 ```text
-already-tested claim --workflow <path> [--check <name-or-glob>] [options]
+already-tested claim --workflow <path> [--ci <system>] [--check <name-or-glob>] [options]
 ```
 
 | Option | Meaning |
 | --- | --- |
-| `--ci <system>` | `auto` (default) or `github-actions`; automatic selection resolves to GitHub Actions |
-| `--workflow <path>` | Required tracked `.yml`/`.yaml` file directly under `.github/workflows/`; paths are repository-relative |
+| `--ci <system>` | `auto` (default), `github-actions`, or `azure-pipelines`; automatic detection falls back to GitHub Actions |
+| `--workflow <path>` | Required tracked `.yml`/`.yaml` file; GitHub Actions requires `.github/workflows/`, while Azure accepts safe repository-relative paths |
 | `--check <name-or-glob>` | Named check or glob; defaults to `*` when omitted |
 | `--files <pattern>` | Repeat to select tracked files; omitted means all tracked files |
 | `--summary <text>` | Expandable label; default `<check> - passed`, or `All workflow checks - passed` for `*` |
@@ -202,6 +204,8 @@ A non-match cannot identify which file changed or distinguish a content change f
 
 ## CI Adapters
 
-`already-tested ci` publishes a skip decision through the selected CI system. It accepts `--ci`, `--workflow`, `--check`, repeated `--files`, and `--body-file`; claim display options and `--json` are not supported.
+`already-tested ci` publishes a skip decision through the selected CI system. It accepts `--ci`, `--workflow`, `--check`, repeated `--files`, and `--body-file`; claim display options and `--json` are not supported. Selection defaults to automatic detection with the same GitHub Actions fallback as the shared API.
 
 For GitHub Actions, the event supplies source, description, and executing workflow; omitted check/file options use the Action inputs. An explicit workflow must match the executing workflow. `already-tested action` remains a fixed GitHub Actions entry point for compatibility with existing binary releases and wrappers.
+
+For Azure Pipelines, `already-tested ci --ci azure-pipelines --workflow azure-pipelines.yml --check test-linux` reads the description from `stdin` or `--body-file` and emits the Azure `skip` output variable. The executing pipeline path must be explicit. See the [Azure Pipelines guide](azure-pipelines.md) for the PowerShell gate, authentication, required build context, and limitations.

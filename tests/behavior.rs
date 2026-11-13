@@ -110,6 +110,8 @@ impl Repo {
         Command::new(env!("CARGO_BIN_EXE_already-tested"))
             .args(args)
             .current_dir(self.path())
+            .env_remove("GITHUB_ACTIONS")
+            .env_remove("TF_BUILD")
             .output()
             .unwrap()
     }
@@ -118,11 +120,48 @@ impl Repo {
         let mut child = Command::new(env!("CARGO_BIN_EXE_already-tested"))
             .args(args)
             .current_dir(self.path())
+            .env_remove("GITHUB_ACTIONS")
+            .env_remove("TF_BUILD")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
+        let mut stdin = child.stdin.take().unwrap();
+        std::thread::scope(|scope| {
+            scope.spawn(move || {
+                let _ = stdin.write_all(input);
+            });
+            child.wait_with_output().unwrap()
+        })
+    }
+
+    fn azure(&self, input: &[u8], extra: &[(&str, Option<&str>)], args: &[&str]) -> Output {
+        let head = self.git(&["rev-parse", "HEAD"]);
+        let mut command = Command::new(env!("CARGO_BIN_EXE_already-tested"));
+        command
+            .args(["ci", "--workflow", "azure-pipelines.yml"])
+            .args(args)
+            .current_dir(self.path())
+            .env("BUILD_REASON", "PullRequest")
+            .env("BUILD_REPOSITORY_PROVIDER", "TfsGit")
+            .env("TF_BUILD", "True")
+            .env_remove("GITHUB_ACTIONS")
+            .env_remove("GITHUB_OUTPUT")
+            .env_remove("GITHUB_STEP_SUMMARY")
+            .env("SYSTEM_PULLREQUEST_SOURCECOMMITID", &head)
+            .env("BUILD_SOURCEVERSION", &head)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        for (name, value) in extra {
+            if let Some(value) = value {
+                command.env(name, value);
+            } else {
+                command.env_remove(name);
+            }
+        }
+        let mut child = command.spawn().unwrap();
         let mut stdin = child.stdin.take().unwrap();
         std::thread::scope(|scope| {
             scope.spawn(move || {
@@ -178,6 +217,8 @@ impl Repo {
         command
             .args(args)
             .current_dir(self.path())
+            .env_remove("GITHUB_ACTIONS")
+            .env_remove("TF_BUILD")
             .env("GITHUB_EVENT_NAME", "pull_request")
             .env("GITHUB_EVENT_PATH", self.path().join(".git/event.json"))
             .env("GITHUB_OUTPUT", self.path().join(".git/output"))
@@ -397,6 +438,12 @@ fn invalid_policy_and_refs_fail_before_generating_a_claim() {
         "",
         "../test.yml",
         "/test.yml",
+        "pipelines/../test.yml",
+        "./test.yml",
+        "pipelines//test.yml",
+        "C:/test.yml",
+        "test.txt",
+        "test\n.yml",
         ".github/workflows/a/b.yml",
         ".github/workflows/a\\b.yml",
     ] {
@@ -457,6 +504,28 @@ fn invalid_policy_and_refs_fail_before_generating_a_claim() {
         options = repo.options();
         options.workflow_ref = Some(value.into());
         assert!(verify_claim(Some(&claim), &options).is_err());
+    }
+}
+
+#[test]
+fn repository_relative_pipeline_claims_bind_the_path_and_pipeline_bytes() {
+    let repo = Repo::new();
+    for workflow in ["azure-pipelines.yml", "pipelines/tests.yaml"] {
+        repo.write(workflow, "steps:\n- script: ./script/ci\n");
+    }
+    repo.commit();
+    for workflow in ["azure-pipelines.yml", "pipelines/tests.yaml"] {
+        let mut options = Options::new(repo.path(), workflow, "unit");
+        options.ci = Ci::AzurePipelines;
+        options.files = vec!["src/**".into()];
+        let claim = create_claim(&options).unwrap();
+        assert!(verify_claim(Some(&claim), &options).unwrap());
+        options.workflow = WORKFLOW.into();
+        assert!(!verify_claim(Some(&claim), &options).unwrap());
+        options.workflow = workflow.into();
+        repo.write(workflow, "steps:\n- script: ./script/different\n");
+        repo.commit();
+        assert!(!verify_claim(Some(&claim), &options).unwrap());
     }
 }
 
@@ -785,6 +854,129 @@ fn ci_defaults_to_github_and_preserves_the_action_compatibility_entry_point() {
 }
 
 #[test]
+fn ci_policy_is_shared_by_the_library_and_cli_without_changing_v1_bytes() {
+    let repo = Repo::new();
+    repo.write("azure-pipelines.yml", "steps: []\n");
+    repo.commit();
+    let mut options = Options::new(repo.path(), "azure-pipelines.yml", "unit");
+    assert!(
+        create_claim(&options)
+            .unwrap_err()
+            .to_string()
+            .contains("GitHub Actions")
+    );
+    options.ci = Ci::AzurePipelines;
+    let claim = create_claim(&options).unwrap();
+    assert!(verify_claim(Some(&claim), &options).unwrap());
+    let args = [
+        "claim",
+        "--workflow",
+        "azure-pipelines.yml",
+        "--check",
+        "unit",
+        "--raw",
+    ];
+    assert!(!repo.cli(&args).status.success());
+    let mut explicit = args.to_vec();
+    explicit.extend(["--ci", "azure-pipelines"]);
+    let result = repo.cli(&explicit);
+    assert!(result.status.success());
+    assert_eq!(String::from_utf8(result.stdout).unwrap().trim_end(), claim);
+    let detected = Command::new(env!("CARGO_BIN_EXE_already-tested"))
+        .args(args)
+        .current_dir(repo.path())
+        .env_remove("GITHUB_ACTIONS")
+        .env("TF_BUILD", "True")
+        .output()
+        .unwrap();
+    assert!(detected.status.success());
+    assert_eq!(
+        String::from_utf8(detected.stdout).unwrap().trim_end(),
+        claim
+    );
+    let result = repo.cli_input(
+        &[
+            "verify",
+            "--ci",
+            "azure-pipelines",
+            "--workflow",
+            "azure-pipelines.yml",
+            "--check",
+            "unit",
+        ],
+        claim.as_bytes(),
+    );
+    assert!(result.status.success());
+    options.workflow = WORKFLOW.into();
+    assert_eq!(create_claim(&options).unwrap(), repo.claim());
+    options.ci = Ci::GitHubActions;
+    assert_eq!(create_claim(&options).unwrap(), repo.claim());
+}
+
+#[test]
+fn ci_detects_signals_defaults_to_github_and_requires_explicit_ambiguous_choices() {
+    let repo = Repo::new();
+    repo.write("azure-pipelines.yml", "steps: []\n");
+    let head = repo.commit();
+    let claim = repo.claim();
+    for (args, signals) in [
+        (vec!["ci"], vec![]),
+        (
+            vec!["ci", "--ci", "auto"],
+            vec![("GITHUB_ACTIONS", Some("true"))],
+        ),
+        (vec!["ci"], vec![("TF_BUILD", Some("False"))]),
+        (
+            vec!["ci", "--ci", "github-actions"],
+            vec![("GITHUB_ACTIONS", Some("true")), ("TF_BUILD", Some("True"))],
+        ),
+        (
+            vec!["action"],
+            vec![("GITHUB_ACTIONS", Some("true")), ("TF_BUILD", Some("True"))],
+        ),
+    ] {
+        let (result, output) = repo.github(&args, serde_json::json!(&claim), &head, &signals);
+        assert!(result.status.success(), "{args:?} {signals:?}");
+        assert_eq!(output, "skip=true\n", "{args:?} {signals:?}");
+    }
+    let (result, output) = repo.github(
+        &["ci"],
+        serde_json::json!(&claim),
+        &head,
+        &[("GITHUB_ACTIONS", Some("true")), ("TF_BUILD", Some("True"))],
+    );
+    assert!(!result.status.success());
+    assert!(output.is_empty());
+    assert!(
+        String::from_utf8(result.stderr)
+            .unwrap()
+            .contains("select --ci explicitly")
+    );
+    let mut options = Options::new(repo.path(), "azure-pipelines.yml", "unit");
+    options.ci = Ci::AzurePipelines;
+    let claim = create_claim(&options).unwrap();
+    for (args, signals) in [
+        (vec!["--check", "unit"], vec![]),
+        (vec!["--check", "unit", "--ci", "auto"], vec![]),
+        (
+            vec!["--check", "unit", "--ci", "azure-pipelines"],
+            vec![
+                ("GITHUB_ACTIONS", Some("true")),
+                ("TF_BUILD", Some("False")),
+            ],
+        ),
+    ] {
+        let result = repo.azure(claim.as_bytes(), &signals, &args);
+        assert!(result.status.success(), "{args:?} {signals:?}");
+        assert_eq!(
+            String::from_utf8(result.stdout).unwrap(),
+            "##vso[task.setvariable variable=skip;isOutput=true]true\n",
+            "{args:?} {signals:?}"
+        );
+    }
+}
+
+#[test]
 fn github_ci_accepts_shared_options_without_overriding_the_executing_workflow() {
     let repo = Repo::new();
     let head = repo.git(&["rev-parse", "HEAD"]);
@@ -821,6 +1013,244 @@ fn github_ci_accepts_shared_options_without_overriding_the_executing_workflow() 
         let (result, output) = repo.github(&args, serde_json::json!(repo.claim()), &head, &[]);
         assert!(result.status.success());
         assert_eq!(output, "skip=false\n");
+    }
+}
+
+#[test]
+fn azure_uses_queued_source_and_executing_pipeline_without_mutating_checkout() {
+    let repo = Repo::new();
+    repo.write("azure-pipelines.yml", "steps:\n- script: ./script/ci\n");
+    let base = repo.commit();
+    repo.write("src/add.rs", "tested source\n");
+    let source = repo.commit();
+    let mut options = Options::new(repo.path(), "azure-pipelines.yml", "unit");
+    options.ci = Ci::AzurePipelines;
+    let claim = create_claim(&options).unwrap();
+    repo.git(&["checkout", "-qb", "target", &base]);
+    repo.write("README.md", "target-only changes\n");
+    repo.commit();
+    repo.git(&["merge", "--no-ff", "-qm", "Merge source", &source]);
+    let merge = repo.git(&["rev-parse", "HEAD"]);
+    repo.write("README.md", "dirty checkout\n");
+    let status = repo.git(&["status", "--porcelain"]);
+    let index = fs::read(repo.path().join(".git/index")).unwrap();
+    let result = repo.azure(
+        claim.as_bytes(),
+        &[("SYSTEM_PULLREQUEST_SOURCECOMMITID", Some(&source))],
+        &["--check", "unit"],
+    );
+    assert!(result.status.success());
+    assert!(result.stderr.is_empty());
+    assert_eq!(
+        String::from_utf8(result.stdout).unwrap(),
+        "##vso[task.setvariable variable=skip;isOutput=true]true\n"
+    );
+    assert_eq!(repo.git(&["status", "--porcelain"]), status);
+    assert_eq!(fs::read(repo.path().join(".git/index")).unwrap(), index);
+    repo.write(
+        "azure-pipelines.yml",
+        "steps:\n- script: ./script/changed\n",
+    );
+    repo.commit();
+    let result = repo.azure(
+        claim.as_bytes(),
+        &[("SYSTEM_PULLREQUEST_SOURCECOMMITID", Some(&source))],
+        &["--check", "unit"],
+    );
+    assert!(result.status.success());
+    assert_eq!(
+        String::from_utf8(result.stdout).unwrap(),
+        "##vso[task.setvariable variable=skip;isOutput=true]false\n"
+    );
+    repo.git(&["checkout", "-qb", "new-source", &source]);
+    repo.write("src/add.rs", "newer PR source\n");
+    repo.commit();
+    let newer_claim = create_claim(&options).unwrap();
+    let result = repo.azure(
+        newer_claim.as_bytes(),
+        &[
+            ("SYSTEM_PULLREQUEST_SOURCECOMMITID", Some(&source)),
+            ("BUILD_SOURCEVERSION", Some(&merge)),
+        ],
+        &["--check", "unit"],
+    );
+    assert!(result.status.success());
+    assert_eq!(
+        String::from_utf8(result.stdout).unwrap(),
+        "##vso[task.setvariable variable=skip;isOutput=true]false\n"
+    );
+}
+
+#[test]
+fn azure_matches_scopes_filters_and_body_files_and_falls_back_on_errors() {
+    let repo = Repo::new();
+    repo.write("azure-pipelines.yml", "steps: []\n");
+    repo.commit();
+    let mut options = Options::new(repo.path(), "azure-pipelines.yml", "test-*");
+    options.ci = Ci::AzurePipelines;
+    options.files = vec!["src/**".into()];
+    let claim = create_claim(&options).unwrap();
+    repo.write(".git/azure-claim.md", &claim);
+    let result = repo.azure(
+        b"",
+        &[],
+        &[
+            "--check",
+            "test-linux",
+            "--files",
+            "src/**",
+            "--body-file",
+            ".git/azure-claim.md",
+        ],
+    );
+    assert!(result.status.success());
+    assert!(result.stderr.is_empty());
+    assert_eq!(
+        String::from_utf8(result.stdout).unwrap(),
+        "##vso[task.setvariable variable=skip;isOutput=true]true\n"
+    );
+    for (input, extra, args) in [
+        (claim.as_bytes(), vec![], vec![]),
+        (b"No claim.".as_slice(), vec![], vec![]),
+        (b"<!-- already-tested:v1 nope -->", vec![], vec![]),
+        (b"\xff", vec![], vec![]),
+        (
+            claim.as_bytes(),
+            vec![("BUILD_REASON", Some("Manual"))],
+            vec![],
+        ),
+        (claim.as_bytes(), vec![("BUILD_REASON", None)], vec![]),
+        (
+            claim.as_bytes(),
+            vec![("BUILD_REPOSITORY_PROVIDER", Some("GitHub"))],
+            vec![],
+        ),
+        (
+            claim.as_bytes(),
+            vec![("SYSTEM_PULLREQUEST_SOURCECOMMITID", None)],
+            vec![],
+        ),
+        (
+            claim.as_bytes(),
+            vec![("SYSTEM_PULLREQUEST_SOURCECOMMITID", Some("HEAD"))],
+            vec![],
+        ),
+        (
+            claim.as_bytes(),
+            vec![("BUILD_SOURCEVERSION", None)],
+            vec![],
+        ),
+        (
+            claim.as_bytes(),
+            vec![(
+                "BUILD_SOURCEVERSION",
+                Some("0000000000000000000000000000000000000000"),
+            )],
+            vec![],
+        ),
+        (claim.as_bytes(), vec![], vec!["--workflow", "../bad.yml"]),
+        (claim.as_bytes(), vec![], vec!["--body-file", "missing"]),
+        (claim.as_bytes(), vec![], vec!["--files", "missing"]),
+        (claim.as_bytes(), vec![], vec!["--check", "bad-["]),
+        (claim.as_bytes(), vec![], vec!["--json"]),
+        (claim.as_bytes(), vec![], vec!["--raw"]),
+    ] {
+        let result = repo.azure(input, &extra, &args);
+        assert!(result.status.success(), "{extra:?} {args:?}");
+        assert_eq!(
+            String::from_utf8(result.stdout).unwrap(),
+            "##vso[task.setvariable variable=skip;isOutput=true]false\n",
+            "{extra:?} {args:?}"
+        );
+    }
+    let result = repo.azure(&vec![b'x'; 1024 * 1024 + 1], &[], &[]);
+    assert!(result.status.success());
+    assert_eq!(
+        String::from_utf8(result.stdout).unwrap(),
+        "##vso[task.setvariable variable=skip;isOutput=true]false\n"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn azure_powershell_gate_reads_prs_and_keeps_failures_on_normal_ci() {
+    let repo = Repo::new();
+    repo.write("azure-pipelines.yml", "steps: []\n");
+    let head = repo.commit();
+    let mut options = Options::new(repo.path(), "azure-pipelines.yml", "unit");
+    options.ci = Ci::AzurePipelines;
+    let claim = create_claim(&options).unwrap();
+    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/azure-pipelines.ps1");
+    for (body, failure, expected) in [
+        (claim.as_str(), "", true),
+        ("No claim.", "", false),
+        (claim.as_str(), "api", false),
+        (claim.as_str(), "binary", false),
+        (claim.as_str(), "token", false),
+        (claim.as_str(), "source", false),
+        (claim.as_str(), "push", false),
+        (claim.as_str(), "http", false),
+    ] {
+        repo.write(".git/azure-body.md", body);
+        let mut command = Command::new("pwsh");
+        command
+            .args(["-NoProfile", "-Command", r#"
+function Invoke-RestMethod {
+    param($Uri, $Headers, $TimeoutSec)
+    if ($env:TEST_AZURE_FAILURE -eq "api") { throw "API unavailable" }
+    if ($Uri -cne "https://dev.azure.com/fixture/project/_apis/git/repositories/repository/pullrequests/7?api-version=7.1" -or
+        $Headers.Authorization -cne "Bearer fixture-token" -or $TimeoutSec -ne 30) {
+        throw "Unexpected request"
+    }
+    @{ description = [IO.File]::ReadAllText($env:TEST_AZURE_BODY) }
+}
+& $env:TEST_AZURE_SCRIPT -Binary $env:TEST_AZURE_BINARY -Check unit
+"#])
+            .current_dir(repo.path())
+            .env("BUILD_REASON", "PullRequest")
+            .env("BUILD_REPOSITORY_PROVIDER", "TfsGit")
+            .env("SYSTEM_PULLREQUEST_SOURCECOMMITID", &head)
+            .env("BUILD_SOURCEVERSION", &head)
+            .env("SYSTEM_ACCESSTOKEN", "fixture-token")
+            .env("GITHUB_ACTIONS", "true")
+            .env("TF_BUILD", "True")
+            .env("SYSTEM_COLLECTIONURI", "https://dev.azure.com/fixture/")
+            .env("SYSTEM_TEAMPROJECTID", "project")
+            .env("BUILD_REPOSITORY_ID", "repository")
+            .env("SYSTEM_PULLREQUEST_PULLREQUESTID", "7")
+            .env("TEST_AZURE_FAILURE", failure)
+            .env("TEST_AZURE_BODY", repo.path().join(".git/azure-body.md"))
+            .env("TEST_AZURE_SCRIPT", &script)
+            .env("TEST_AZURE_BINARY", env!("CARGO_BIN_EXE_already-tested"));
+        match failure {
+            "binary" => {
+                command.env("TEST_AZURE_BINARY", repo.path().join("missing.exe"));
+            }
+            "token" => {
+                command.env_remove("SYSTEM_ACCESSTOKEN");
+            }
+            "source" => {
+                command.env_remove("SYSTEM_PULLREQUEST_SOURCECOMMITID");
+            }
+            "push" => {
+                command.env("BUILD_REASON", "IndividualCI");
+            }
+            "http" => {
+                command.env("SYSTEM_COLLECTIONURI", "http://dev.azure.com/fixture/");
+            }
+            _ => {}
+        }
+        let result = command.output().unwrap();
+        assert!(result.status.success(), "{failure}: {result:?}");
+        let output = String::from_utf8(result.stdout)
+            .unwrap()
+            .replace("\r\n", "\n");
+        assert!(output.starts_with("##vso[task.setvariable variable=skip;isOutput=true]false\n"));
+        assert_eq!(
+            output.contains("##vso[task.setvariable variable=skip;isOutput=true]true\n"),
+            expected,
+            "{failure}: {output}"
+        );
     }
 }
 

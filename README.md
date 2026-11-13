@@ -54,6 +54,8 @@ The agent installs the CLI, reads its release-matched guidance, and inspects you
 
 [Detailed Guides and Examples](docs/README.md) | [Blog Post: Use Agent Test Run Claims to Skip CI](https://code.dblock.org/2026/11/12/use-agent-test-run-claims-to-skip-ci.html) | [Contributing](CONTRIBUTING.md) | [Changelog](CHANGELOG.md).
 
+For Azure Repos and Azure Pipelines, see the [minimal Azure gate](docs/azure-pipelines.md).
+
 ## License
 
 [MIT](LICENSE).

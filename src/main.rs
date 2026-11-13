@@ -21,8 +21,8 @@ Run tests against committed source, then paste the generated expandable section 
 Verify reads a claim or PR description from stdin or --body-file and checks committed HEAD.
 
 Options:
-  --ci <system>         auto (default) or github-actions
-  --workflow <path>      Tracked .github/workflows/*.yml or *.yaml file
+  --ci <system>         auto (default), github-actions, or azure-pipelines
+  --workflow <path>      Tracked repository-relative .yml or .yaml pipeline file
   --check <identifier>   Check name or glob (default: * claims all work covered by the workflow gate)
   --files <pattern>      Git path pattern; repeat to select files (default: all tracked files)
   --summary <text>       Disclosure label (default: <check> - passed)
@@ -37,7 +37,7 @@ Options:
   --version             Show the package version
 
 Verify exit codes: 0 = match, 1 = no match, 2 = invalid input or verification error.
-Automatic CI selection currently defaults to GitHub Actions.
+CI selection uses GITHUB_ACTIONS / TF_BUILD, falling back to GitHub Actions.
 The ci command publishes the selected CI system's skip output.
 ";
 
@@ -305,8 +305,62 @@ fn selected_ci(values: &HashMap<String, String>) -> Result<Ci> {
 }
 
 fn ci(values: &HashMap<String, String>, files: Vec<String>) -> Result<u8> {
-    selected_ci(values)?.resolve()?;
-    action(values, files)?;
+    if selected_ci(values)?.resolve()? == Ci::AzurePipelines {
+        azure_pipelines(values, files)
+    } else {
+        action(values, files)?;
+        Ok(0)
+    }
+}
+
+fn azure_pipelines(values: &HashMap<String, String>, files: Vec<String>) -> Result<u8> {
+    let verdict = (|| -> Result<bool> {
+        for name in ["raw", "summary", "command", "environment", "json"] {
+            if values.contains_key(name) {
+                return Err(format!("--{name} is not valid for ci.").into());
+            }
+        }
+        if env::var("BUILD_REASON").as_deref() != Ok("PullRequest")
+            || env::var("BUILD_REPOSITORY_PROVIDER").as_deref() != Ok("TfsGit")
+        {
+            return Ok(false);
+        }
+        let workflow = values.get("workflow").ok_or("--workflow is required.")?;
+        let mut options = Options::new(
+            env::current_dir()?,
+            workflow,
+            values.get("check").map_or("*", String::as_str),
+        );
+        options.ci = Ci::AzurePipelines;
+        let commit = |name| -> Result<String> {
+            env::var(name)
+                .ok()
+                .filter(|value| valid_commit(value))
+                .ok_or_else(|| format!("{name} is missing or is not a full commit ID.").into())
+        };
+        // Use queued revisions, never a newer branch tip returned by the PR API.
+        options.r#ref = commit("SYSTEM_PULLREQUEST_SOURCECOMMITID")?;
+        options.workflow_ref = Some(commit("BUILD_SOURCEVERSION")?);
+        options.files = files;
+        Ok(matches!(
+            verify_committed_claim(&claim_text(values)?, &options)?,
+            Verification::Matched { .. }
+        ))
+    })();
+    let skip = match verdict {
+        Ok(skip) => skip,
+        Err(error) => {
+            eprintln!(
+                "already-tested: {} Running CI normally.",
+                error.to_string().replace(['\r', '\n'], " ")
+            );
+            false
+        }
+    };
+    writeln!(
+        std::io::stdout().lock(),
+        "##vso[task.setvariable variable=skip;isOutput=true]{skip}"
+    )?;
     Ok(0)
 }
 
