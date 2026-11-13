@@ -1,4 +1,4 @@
-use crate::{Result, package::TARGETS, run};
+use crate::{Result, checks, package::TARGETS, run};
 use regex::{Captures, Regex};
 use semver::Version;
 use sha2::{Digest, Sha256};
@@ -35,32 +35,44 @@ pub fn update(root: &Path, released: &str, next: &str) -> Result<()> {
         r"(dblock/already-tested@v|already-tested/releases/download/v|--version v|-Version v)([0-9]+\.[0-9]+\.[0-9]+)",
     )?;
     let mut edits = Vec::new();
-    for file in [
+    let mut files: Vec<_> = [
         "action.yml",
         "scripts/action.sh",
         "README.md",
         ".github/ci-version",
-    ] {
-        let text = fs::read_to_string(root.join(file))?;
-        let updated = match file {
-            "action.yml" => replace_version(
+    ]
+    .into_iter()
+    .map(|file| root.join(file))
+    .collect();
+    files.extend(
+        checks::markdown_files(root)?
+            .into_iter()
+            .filter(|path| path.starts_with(root.join("docs"))),
+    );
+    for path in files {
+        let text = fs::read_to_string(&path)?;
+        let updated = if path == root.join("action.yml") {
+            replace_version(
                 &text,
                 &format!("default: v{released}\n"),
                 &format!("default: v{next}\n"),
-            )?,
-            "scripts/action.sh" => replace_version(
+            )?
+        } else if path == root.join("scripts/action.sh") {
+            replace_version(
                 &text,
                 &format!("INPUT_VERSION:-v{released}"),
                 &format!("INPUT_VERSION:-v{next}"),
-            )?,
-            "README.md" => published
+            )?
+        } else if path == root.join(".github/ci-version") {
+            format!("v{released}\n")
+        } else {
+            published
                 .replace_all(&text, |captures: &Captures<'_>| {
                     format!("{}{released}", &captures[1])
                 })
-                .into_owned(),
-            _ => format!("v{released}\n"),
+                .into_owned()
         };
-        edits.push((root.join(file), updated));
+        edits.push((path, updated));
     }
     for (path, text) in edits {
         fs::write(path, text)?;

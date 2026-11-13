@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use yaml_rust2::{Yaml, YamlLoader};
 
 pub fn title_case(value: &str) -> bool {
@@ -134,43 +134,70 @@ fn check_name(mapping: &Yaml) -> Result<(), String> {
     }
 }
 
+pub fn markdown_files(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut directories = vec![root.to_owned()];
+    let mut files = Vec::new();
+    while let Some(directory) = directories.pop() {
+        for entry in fs::read_dir(&directory).map_err(|error| error.to_string())? {
+            let entry = entry.map_err(|error| error.to_string())?;
+            let path = entry.path();
+            if entry
+                .file_type()
+                .map_err(|error| error.to_string())?
+                .is_dir()
+            {
+                if directory != root || path == root.join("docs") {
+                    directories.push(path);
+                }
+            } else if path.extension().is_some_and(|extension| extension == "md") {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
+fn headings(text: &str) -> HashSet<String> {
+    text.lines()
+        .filter(|line| line.starts_with('#'))
+        .map(|line| {
+            line.trim_start_matches('#')
+                .trim()
+                .to_lowercase()
+                .replace(' ', "-")
+        })
+        .collect()
+}
+
 pub fn documents(root: &Path) -> Result<(), String> {
-    for entry in fs::read_dir(root).map_err(|error| error.to_string())? {
-        let path = entry.map_err(|error| error.to_string())?.path();
-        if path.extension().is_some_and(|extension| extension == "md") {
-            let text = fs::read_to_string(&path).map_err(|error| error.to_string())?;
-            markdown(&text).map_err(|error| format!("{}: {error}", path.display()))?;
-            let headings: HashSet<_> = text
-                .lines()
-                .filter(|line| line.starts_with('#'))
-                .map(|line| {
-                    line.trim_start_matches('#')
-                        .trim()
-                        .to_lowercase()
-                        .replace(' ', "-")
-                })
-                .collect();
-            let mut rest = text.as_str();
-            while let Some(start) = rest.find("](") {
-                rest = &rest[start + 2..];
-                let Some(end) = rest.find(')') else { break };
-                let target = &rest[..end];
-                if !target.contains("://") {
-                    let (file, anchor) = target.split_once('#').unwrap_or((target, ""));
-                    let linked = if file.is_empty() {
-                        path.clone()
-                    } else {
-                        root.join(file)
-                    };
-                    if !linked.exists() {
-                        return Err(format!("{}: missing link {target}", path.display()));
-                    }
-                    if file.is_empty() && !anchor.is_empty() && !headings.contains(anchor) {
+    for path in markdown_files(root)? {
+        let text = fs::read_to_string(&path).map_err(|error| error.to_string())?;
+        markdown(&text).map_err(|error| format!("{}: {error}", path.display()))?;
+        let mut rest = text.as_str();
+        while let Some(start) = rest.find("](") {
+            rest = &rest[start + 2..];
+            let Some(end) = rest.find(')') else { break };
+            let target = &rest[..end];
+            if !target.contains("://") {
+                let (file, anchor) = target.split_once('#').unwrap_or((target, ""));
+                let linked = if file.is_empty() {
+                    path.clone()
+                } else {
+                    path.parent().unwrap().join(file)
+                };
+                if !linked.exists() {
+                    return Err(format!("{}: missing link {target}", path.display()));
+                }
+                if !anchor.is_empty() {
+                    let linked_text =
+                        fs::read_to_string(&linked).map_err(|error| error.to_string())?;
+                    if !headings(&linked_text).contains(anchor) {
                         return Err(format!("{}: missing anchor {target}", path.display()));
                     }
                 }
-                rest = &rest[end + 1..];
             }
+            rest = &rest[end + 1..];
         }
     }
     Ok(())
@@ -197,5 +224,45 @@ mod tests {
         assert!(yaml_names("jobs:\n  x:\n    steps:\n      - name: 7\n").is_err());
         assert!(yaml_names("jobs: [broken\n").is_err());
         assert!(yaml_names("name: Test\nname: Lint\n").is_err());
+    }
+
+    #[test]
+    #[cfg_attr(
+        dylint_lib = "general",
+        allow(
+            non_thread_safe_call_in_test,
+            reason = "All writes are confined to this test's unique temporary directory."
+        )
+    )]
+    fn checks_nested_docs_and_relative_file_anchors_without_scanning_builds() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path();
+        fs::create_dir_all(root.join("docs/nested")).unwrap();
+        fs::create_dir(root.join("target")).unwrap();
+        fs::write(root.join("target/bad.md"), "# bad heading\n").unwrap();
+        fs::write(
+            root.join("README.md"),
+            "# Project\n\n[Examples](docs/nested/guide.md#examples)\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("docs/README.md"),
+            "# Documentation\n\n[Project](../README.md#project)\n",
+        )
+        .unwrap();
+        let guide = root.join("docs/nested/guide.md");
+        fs::write(
+            &guide,
+            "# Guide\n\n## Examples\n\n[Documentation](../README.md)\n",
+        )
+        .unwrap();
+        assert!(documents(root).is_ok());
+        fs::write(root.join("README.md"), "# Project\n").unwrap();
+        fs::write(&guide, "# Guide\n\n[Missing](../missing.md)\n").unwrap();
+        assert!(documents(root).unwrap_err().contains("missing link"));
+        fs::write(&guide, "# bad heading\n").unwrap();
+        assert!(documents(root).unwrap_err().contains("title-case"));
+        fs::write(&guide, "# Guide\n\n[Missing](../../README.md#absent)\n").unwrap();
+        assert!(documents(root).unwrap_err().contains("missing anchor"));
     }
 }
