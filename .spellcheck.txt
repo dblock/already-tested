@@ -17,9 +17,11 @@ POSIX
 PRs
 PowerShell
 README
+SDK
 SHA
 SVG
 UTF
+Xcode
 YAML
 appendable
 automata

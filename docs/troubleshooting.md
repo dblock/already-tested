@@ -32,6 +32,12 @@ Use a tracked `.yml` or `.yaml` workflow directly under `.github/workflows/`. Pa
 
 Use real single-line command/environment metadata, quote shell patterns, and do not combine `--raw` with display metadata. `already-tested --help` and `already-tested --version` work without a repository.
 
+## Different Local and CI Environments
+
+A slightly different macOS version is not automatically equivalent. Follow the project's [environment policy](agents.md#environment-matching): require exact matching unless maintainers explicitly permit that difference for the affected check. A permitted OS patch difference does not also permit a different CPU architecture, compiler, Xcode, or SDK.
+
+Always disclose the actual local versions. A successful `verify` result or Action content match does not compare `--environment` metadata and cannot establish environment equivalence. If the policy or required versions are unclear, omit the claim and let CI run rather than broadening its scope or relabeling the local environment.
+
 ## Failed or Skipped Prerequisite
 
 Use the full job condition in [Skip All Remaining Jobs](skip-jobs.md#complete-workflow), including `!cancelled()` and the verifier result check. A plain `if: needs.verify.outputs.skip != 'true'` can inherit GitHub's success-only dependency behavior and skip work after a prerequisite failure.
