@@ -51,23 +51,60 @@ Matching claims skip conditioned steps while keeping the job's required check. M
 
 Keep independent CI for external services, secrets, or environments you cannot reproduce locally.
 
+### Prerequisite Job
+
+To skip all remaining jobs, add a small prerequisite job and gate the rest on its output. An omitted or empty `check` defaults to the literal `*`: the agent claims it ran everything covered by the gate.
+
+Use an Action and CLI release supporting blanket claims in place of `<version-with-blanket-claims>`. Keep the triggers and permissions from the example above:
+
+```yaml
+jobs:
+  verify:
+    name: Verify Local Claim
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.claims.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: dblock/already-tested@<version-with-blanket-claims>
+        id: claims
+
+  ci:
+    needs: verify
+    if: >-
+      ${{ !cancelled() &&
+          (needs.verify.result != 'success' ||
+           needs.verify.outputs.skip != 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - run: ./script/ci
+```
+
+Repeat the dependency and condition for every job you want to skip, preserving existing conditions, dependencies, and required-check names. Missing or stale claims, verifier failures, and pushes run normal CI; workflow cancellation is preserved. Named and blanket claims are separate identities, not glob matches. See [Design](DESIGN.md#github-action) for details.
+
 ## Usage
 
 ### AI Agents
 
-Add this to your project's `AGENTS.md`, replacing the command, workflow path, and check ID with your job's values:
+For the prerequisite-job pattern, add this to `AGENTS.md`, replacing the workflow path and `./script/ci` with your complete CI commands:
 
 ```markdown
 ## Local CI Claims
 
 - Install `already-tested` if needed using the [local CLI instructions](https://github.com/dblock/already-tested#local-cli).
-- Run the complete `./script/ci` check in the job's OS, CPU, and toolchain environment.
+- Read `.github/workflows/test.yml` and run every job covered by its gate, including all matrix environments, using `./script/ci`. If anything was not tested, do not claim it; let CI run.
 - Commit the tested files and leave the tracked working tree clean.
-- Run `already-tested claim --workflow .github/workflows/test.yml --check test-linux --command './script/ci' --environment '<actual OS, CPU, and toolchain versions>'`.
+- Run `already-tested claim --workflow .github/workflows/test.yml --command './script/ci' --environment '<actual OS, CPU, and toolchain versions>'`. The default `*` claims all work covered by this workflow's gate.
 - Paste the entire output into the PR description, preserving its hidden claim.
 - After tracked source or workflow changes, retest, commit, and replace the claim.
-- Never claim checks you did not run or other environments; omit the claim and let CI run instead.
+- Create a separate claim for each workflow you fully tested.
 ```
+
+For per-step skipping, add `--check test-linux` to the claim command to match `check: test-linux` in the workflow, and run only that check's complete commands in its matching environment. Match any `files` selection with repeated `--files` arguments.
 
 ## Configuration
 

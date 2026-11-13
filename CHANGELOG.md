@@ -4,6 +4,10 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+### Added
+
+- [#11](https://github.com/dblock/already-tested/pull/11): Default to a blanket workflow claim and document a prerequisite job that skips dependent CI jobs before runner allocation - [@dblock](https://github.com/dblock).
+
 ### Changed
 
 - [#10](https://github.com/dblock/already-tested/pull/10): Explain agent test-run claims in the README introduction and link to the introductory blog post - [@dblock](https://github.com/dblock).

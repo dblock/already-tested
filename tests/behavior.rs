@@ -379,7 +379,16 @@ fn invalid_policy_and_refs_fail_before_generating_a_claim() {
                 .contains("workflow must")
         );
     }
-    for check in ["", "two words", "$(touch bad)", &"a".repeat(129)] {
+    for check in [
+        "",
+        "two words",
+        "$(touch bad)",
+        &"a".repeat(129),
+        "unit*",
+        "**",
+        "test-?",
+        "[unit]",
+    ] {
         let mut options = repo.options();
         options.check = check.into();
         assert!(
@@ -583,7 +592,6 @@ fn cli_help_version_errors_and_nested_directory_behavior() {
         vec!["--workflow"],
         vec!["--version", "--help"],
         vec!["claim", "--version"],
-        vec!["claim", "--workflow", WORKFLOW],
     ] {
         let output = repo.cli(&args);
         assert_eq!(output.status.code(), Some(1), "{args:?}");
@@ -719,6 +727,71 @@ fn library_cli_and_action_complete_pr_head_and_description_edit_round_trip() {
 }
 
 #[test]
+fn blanket_claim_defaults_round_trip_without_matching_named_claims() {
+    let repo = Repo::new();
+    let source = repo.git(&["rev-parse", "HEAD"]);
+    let default = repo.cli(&["claim", "--workflow", WORKFLOW]);
+    assert!(default.status.success());
+    let explicit = repo.cli(&["claim", "--workflow", WORKFLOW, "--check", "*"]);
+    assert!(explicit.status.success());
+    assert_eq!(default.stdout, explicit.stdout);
+    let body = String::from_utf8(default.stdout).unwrap();
+    assert!(verify_claim(Some(&body), &Options::new(repo.path(), WORKFLOW, "*")).unwrap());
+    let unit = repo.claim();
+    for (claim, check, expected) in [
+        (body.as_str(), None, true),
+        (body.as_str(), Some("*"), true),
+        (body.as_str(), Some("unit"), false),
+        (unit.as_str(), None, false),
+        (unit.as_str(), Some("unit"), true),
+        ("No claim.", None, false),
+        (body.as_str(), Some("unit*"), false),
+        (body.as_str(), Some(""), true),
+    ] {
+        let (result, output) = repo.action(claim.into(), &source, &[("INPUT_CHECK", check)]);
+        assert!(result.status.success());
+        assert_eq!(output, format!("skip={expected}\n"));
+    }
+    repo.write("src/add.rs", "changed source");
+    let changed = repo.commit();
+    let (result, output) = repo.action(body.into(), &changed, &[("INPUT_CHECK", None)]);
+    assert!(result.status.success());
+    assert_eq!(output, "skip=false\n");
+}
+
+#[test]
+fn blanket_claim_binds_workflow_and_filters_and_never_skips_pushes() {
+    let repo = Repo::new();
+    let source = repo.git(&["rev-parse", "HEAD"]);
+    let mut options = Options::new(repo.path(), WORKFLOW, "*");
+    options.files = vec!["src/**".into()];
+    let claim = create_claim(&options).unwrap();
+    let extra = [("INPUT_CHECK", None), ("INPUT_FILES", Some("src/**"))];
+    let (result, output) = repo.action(claim.clone().into(), &source, &extra);
+    assert!(result.status.success());
+    assert_eq!(output, "skip=true\n");
+    for overrides in [
+        vec![("INPUT_FILES", Some(""))],
+        vec![("GITHUB_EVENT_NAME", Some("push"))],
+        vec![(
+            "GITHUB_WORKFLOW_REF",
+            Some("owner/project/.github/workflows/other.yml@refs/heads/master"),
+        )],
+    ] {
+        let mut inputs = extra.to_vec();
+        inputs.extend(overrides);
+        let (result, output) = repo.action(claim.clone().into(), &source, &inputs);
+        assert!(result.status.success());
+        assert_eq!(output, "skip=false\n");
+    }
+    repo.write(WORKFLOW, "name: Changed workflow\n");
+    repo.commit();
+    let (result, output) = repo.action(claim.into(), &source, &extra);
+    assert!(result.status.success());
+    assert_eq!(output, "skip=false\n");
+}
+
+#[test]
 fn action_binds_filters_identity_and_actual_executing_workflow_not_checkout() {
     let repo = Repo::new();
     let mut options = repo.options();
@@ -781,7 +854,6 @@ fn action_fails_safe_for_untrusted_events_and_operational_failures_but_output_er
         ("GITHUB_WORKFLOW_REF", None),
         ("GITHUB_WORKFLOW_SHA", Some("")),
         ("GITHUB_WORKSPACE", Some(missing)),
-        ("INPUT_CHECK", Some("")),
         ("INPUT_FILES", Some("missing-path")),
     ] {
         let (result, output) = repo.action(claim.clone().into(), &source, &[(name, value)]);

@@ -214,12 +214,13 @@ fn snapshot(options: &Options) -> Result<String> {
     {
         return fail("workflow must be a file under .github/workflows/ ending in .yml or .yaml.");
     }
-    if !Regex::new(r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$")
-        .unwrap()
-        .is_match(&options.check)
+    if options.check != "*"
+        && !Regex::new(r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$")
+            .unwrap()
+            .is_match(&options.check)
     {
         return fail(
-            "check must be 1-128 characters using letters, numbers, '.', '_', ':', '/', or '-'.",
+            "check must be '*' or 1-128 characters using letters, numbers, '.', '_', ':', '/', or '-'.",
         );
     }
     let workflow_ref = options.workflow_ref.as_deref().unwrap_or(&options.r#ref);
