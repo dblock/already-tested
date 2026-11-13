@@ -149,6 +149,20 @@ fn release_fixture_updates_metadata_and_native_uploads_recover_without_overwriti
     let released = CargoPackage::new(project.root())?.metadata()?.version;
     let next = next_version(&released);
     let version = released.to_string();
+    for file in ["README.md", "docs/skip-jobs.md"] {
+        let path = project.root().join(file);
+        let text = fs::read_to_string(&path)?;
+        let pinned = format!("/blob/v{released}/docs/cli.md#installation");
+        assert!(
+            text.contains(&pinned),
+            "{file}: missing release-matched installation link"
+        );
+        fs::write(
+            path,
+            text.replace(&pinned, "/blob/v0.0.0/docs/cli.md#installation"),
+        )?;
+    }
+    git(&project, &["add", "README.md", "docs/skip-jobs.md"])?;
     prepare_fixture_notes(&project)?;
     let mut fixture = ReleaseFixture::new(project)?;
     fixture.configure_workflow(|workflow| {
@@ -197,6 +211,14 @@ fn release_fixture_updates_metadata_and_native_uploads_recover_without_overwriti
             format!("<!-- already-tested:instructions v{next} -->"),
         ),
         ("README.md", format!("already-tested@v{released}")),
+        (
+            "README.md",
+            format!("already-tested/blob/v{released}/docs/cli.md#installation"),
+        ),
+        (
+            "docs/skip-jobs.md",
+            format!("already-tested/blob/v{released}/docs/cli.md#installation"),
+        ),
         (
             "docs/cli.md",
             format!("releases/download/v{released}/install.sh"),
