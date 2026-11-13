@@ -1213,9 +1213,9 @@ dependencies = [
 
 [[package]]
 name = "rust-crate-release"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28ad9470d6be7160d78e762f8683d3f0eecc65bb1acb4f8a49e94245a71456a5"
+checksum = "380e6237660d4c8dce51d0111a17743a56352aeeffe99c0ca04b12374cf7b904"
 dependencies = [
  "chrono",
  "chrono-tz",

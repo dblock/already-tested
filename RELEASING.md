@@ -20,6 +20,8 @@ Check crates.io and GitHub Releases before choosing a version. Keep an unpublish
 
 `rcr.toml` selects Keep a Changelog, all workspace tests, strict lint, and native package validation. No `next-version` override is needed: rust-crate-release defaults to the next patch version. The `[Unreleased]` comparison starts at the last published tag; dated historical sections describe only changes present in their release.
 
+The release Action caches compilation dependencies for both its own Cargo workspace and this project's workspace. Only compiler work is reused; source tests, lint, archive checks, preservation guards, and next-development validation still run. The first run with a cold cache still compiles dependencies.
+
 The workflow builds and validates all six native archives before registry publication. Each native job exercises its installed executable on the matching OS/CPU; Linux uses musl and Windows uses static CRT linking. The release job installs Rust components, Dylint, and musl tooling before invoking the Action, so it does not need the optional `setup-command`. Rust release validation additionally tests the prepared source and its actual `.crate`. Never substitute rebuilt archives for the retained validated artifacts.
 
 ## Run a Release

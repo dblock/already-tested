@@ -61,7 +61,7 @@ jobs:
           path: ${{ runner.temp }}/native-release
       - name: Release Crate
         id: release
-        uses: dblock/rust-crate-release@ac999bd3eec520a42d1322222fd57671b20725fe # v0.1.1
+        uses: dblock/rust-crate-release@2a837f8e6fc5f40601749cf8f3c6f9064d716946 # v0.1.2
       - name: Upload Verified Native Assets
         env:
           RELEASED_VERSION: ${{ steps.release.outputs.version }}

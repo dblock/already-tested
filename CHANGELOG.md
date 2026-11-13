@@ -4,6 +4,10 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+### Changed
+
+- [#19](https://github.com/dblock/already-tested/pull/19): Upgrade rust-crate-release to v0.1.2 to cache release-tool compilation dependencies without skipping release validation - [@dblock](https://github.com/dblock).
+
 ## [0.2.0] - 2026-11-13
 
 ### Added
