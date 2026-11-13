@@ -411,13 +411,30 @@ pub fn create_claim(options: &Options) -> Result<String> {
 /// Missing/unknown claims return false without reading Git. Operational failures
 /// return errors; callers deciding whether to skip must treat those as no match.
 pub fn verify_claim(body: Option<&str>, options: &Options) -> Result<bool> {
+    Ok(matches!(
+        verify_claim_details(body, options)?,
+        Verification::Matched { .. }
+    ))
+}
+
+/// Whether a canonical claim covers the requested gate and committed content.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Verification {
+    Matched { check: String },
+    NoMatch,
+}
+
+/// Verify a claim and retain its matched scope. Errors must request normal CI.
+pub fn verify_claim_details(body: Option<&str>, options: &Options) -> Result<Verification> {
     let Some(body) = body.filter(|b| b.contains(PREFIX)) else {
-        return Ok(false);
+        return Ok(Verification::NoMatch);
     };
     let gate = validate_identity(options)?;
     let snapshot = snapshot(options)?;
     if body.contains(&snapshot.claim(&options.workflow, &options.check)?) {
-        return Ok(true);
+        return Ok(Verification::Matched {
+            check: options.check.clone(),
+        });
     }
     let mut seen = std::collections::HashSet::from([options.check.clone()]);
     for (offset, _) in body.match_indices(PREFIX) {
@@ -444,8 +461,10 @@ pub fn verify_claim(body: Option<&str>, options: &Options) -> Result<bool> {
             continue;
         };
         if scope.covers(&gate)? && body.contains(&snapshot.claim(&options.workflow, check)?) {
-            return Ok(true);
+            return Ok(Verification::Matched {
+                check: check.to_owned(),
+            });
         }
     }
-    Ok(false)
+    Ok(Verification::NoMatch)
 }

@@ -116,3 +116,28 @@ Verification hashes PR-head source and the actual executing workflow, not arbitr
 | `skip` output | The string `true` for a verified claim, otherwise `false` |
 
 Compare the output string explicitly: `if: steps.tested.outputs.skip != 'true'`. Installation and verification failures request normal CI. A failure writing `GITHUB_OUTPUT` fails the Action instead of silently reporting a result.
+
+## Job Summaries
+
+The Action automatically appends an Already Tested report to the workflow run's Summary page, under the job that ran the gate. Open Checks on a pull request, follow the gate job to its workflow run, and select Summary. No additional workflow steps or permissions are needed.
+
+A matching claim produces a report like this:
+
+### Already Tested
+
+**Matching local claim; gated work may be skipped.**
+
+| Field | Value |
+| --- | --- |
+| Workflow | `.github/workflows/test.yml` |
+| Gate | `test-linux` |
+| Source commit | `<PR-head SHA>` |
+| Matched claim | `test-*` |
+
+Claims are trusted statements, not proof that tests ran.
+
+The report distinguishes the gate from the matching claim's scope, so a named gate covered by a glob or blanket claim is clear. It describes the gate's decision, not a confirmed list of skipped jobs or steps; your workflow's conditions still control that work.
+
+If no claim matches, the report says **Run CI normally**. Other reports explain that only pull-request events can skip CI, that verification failed, or that the verifier could not be installed. A missing match does not establish whether source, workflow, scope, or file selection changed, so the report does not guess.
+
+Reports do not copy PR-description prose, declared commands, or declared environments. Dynamic values are escaped, and long values are shortened. Each gate appends its own report without replacing earlier summary content. If summary writing fails, the Action logs a warning without changing `skip` or failing the check. Outside GitHub Actions, an absent `GITHUB_STEP_SUMMARY` simply disables reports.

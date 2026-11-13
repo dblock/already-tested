@@ -79,6 +79,8 @@ Only `pull_request` events can skip CI. Trigger on `opened`, `synchronize`, `reo
 
 Missing/stale/malformed claims, missing objects, unsupported inputs, installation/download failures, and other operational verification errors request normal CI. Failure to write `GITHUB_OUTPUT` fails the Action instead of pretending to deliver a decision. Matching claims skip conditioned steps or dependent jobs, never the enclosing workflow itself.
 
+`verify_claim_details` retains the canonical matching claim's scope; `verify_claim` preserves the Boolean interface. The Action appends an escaped, bounded report to `GITHUB_STEP_SUMMARY` after writing its decision to `GITHUB_OUTPUT`. Reports show the gate, matched scope, workflow, and source commit when verification completes, or a normal-CI fallback reason otherwise. They never treat display metadata as evidence or infer which downstream jobs actually skipped. Summary failures only warn; installer failures also produce a report without weakening the normal-CI fallback. See [job summaries](docs/github-actions.md#job-summaries).
+
 Hashes do not prove execution, environment equivalence, external state, dependencies outside selected files, or compatibility with a newer base. Preserve independent integration/platform checks and branch protection.
 
 ## Binary Distribution

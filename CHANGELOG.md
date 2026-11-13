@@ -6,6 +6,7 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ### Added
 
+- [#16](https://github.com/dblock/already-tested/pull/16): Add automatic GitHub job summaries explaining matching claims and when to run normal CI without changing skip decisions - [@dblock](https://github.com/dblock).
 - [#14](https://github.com/dblock/already-tested/pull/14): Add reproducible claim-generation and verification benchmarks using real Git repositories - [@dblock](https://github.com/dblock).
 - [#12](https://github.com/dblock/already-tested/pull/12): Support check globs in claims and workflow gates, requiring each claim to cover the gate's entire scope - [@dblock](https://github.com/dblock).
 - [#11](https://github.com/dblock/already-tested/pull/11): Default to a blanket workflow claim and document a prerequisite job that skips dependent CI jobs before runner allocation - [@dblock](https://github.com/dblock).

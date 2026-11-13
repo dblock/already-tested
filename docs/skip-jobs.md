@@ -63,6 +63,8 @@ Add your normal setup and dependency-install steps inside each covered job. They
 
 The condition explicitly checks the verifier result, so missing claims, stale claims, verifier failures, and skipped verification run normal CI. The `!cancelled()` status check avoids GitHub's implicit success-only dependency guard while preserving workflow cancellation. Pushes always run CI. A matching claim skips dependent jobs, not the enclosing workflow; it does not cancel the run.
 
+The [job summary](github-actions.md#job-summaries) explains the verification decision on the workflow run's Summary page. Dependent jobs still appear as skipped in GitHub; the report explains the gate without changing job status or posting a PR comment.
+
 The verifier only compares committed content, so its Linux runner can verify claims about other environments. That does not let the agent claim other environments without testing them.
 
 ## Agent Instructions

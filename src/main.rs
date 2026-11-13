@@ -1,6 +1,9 @@
-use already_tested::{Options, create_claim, head_commit, trim_js, valid_commit, verify_claim};
+use already_tested::{
+    Options, Verification, create_claim, head_commit, trim_js, valid_commit, verify_claim_details,
+};
 use std::collections::HashMap;
 use std::env;
+use std::fmt::Write as _;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
@@ -74,9 +77,14 @@ fn format_claim(claim: &str, values: &HashMap<String, String>, cwd: &Path) -> Re
     ))
 }
 
-fn action_verdict() -> Result<bool> {
+struct ActionReport {
+    options: Options,
+    verification: Verification,
+}
+
+fn action_verdict() -> Result<Option<ActionReport>> {
     if env::var("GITHUB_EVENT_NAME").as_deref() != Ok("pull_request") {
-        return Ok(false);
+        return Ok(None);
     }
     let event: serde_json::Value = serde_json::from_slice(&fs::read(
         env::var_os("GITHUB_EVENT_PATH").ok_or("GITHUB_EVENT_PATH is missing.")?,
@@ -113,15 +121,90 @@ fn action_verdict() -> Result<bool> {
         .filter(|s| !s.is_empty())
         .map(str::to_owned)
         .collect();
-    Ok(verify_claim(
+    let verification = verify_claim_details(
         event.pointer("/pull_request/body").and_then(|b| b.as_str()),
         &options,
-    )?)
+    )?;
+    Ok(Some(ActionReport {
+        options,
+        verification,
+    }))
+}
+
+fn summary_code(value: &str) -> String {
+    let mut characters = value.chars();
+    let mut output: String = characters
+        .by_ref()
+        .take(512)
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect();
+    if characters.next().is_some() {
+        output.push_str("...");
+    }
+    code(&output)
+}
+
+fn action_summary(verdict: &Result<Option<ActionReport>>) -> String {
+    let mut summary = String::from("\n### Already Tested\n\n");
+    match verdict {
+        Ok(Some(report)) => {
+            match &report.verification {
+                Verification::Matched { .. } => summary.push_str(
+                    "**Matching local claim; gated work may be skipped.**\n\n",
+                ),
+                Verification::NoMatch => summary.push_str(
+                    "**Run CI normally.**\n\nNo matching claim was found for this gate and committed content.\n\n",
+                ),
+            }
+            summary.push_str("| Field | Value |\n| --- | --- |\n");
+            for (name, value) in [
+                ("Workflow", report.options.workflow.as_str()),
+                ("Gate", report.options.check.as_str()),
+                ("Source commit", report.options.r#ref.as_str()),
+            ] {
+                writeln!(
+                    summary,
+                    "| {name} | {} |",
+                    summary_code(value).replace('|', "\\|")
+                )
+                .unwrap();
+            }
+            if let Verification::Matched { check } = &report.verification {
+                writeln!(
+                    summary,
+                    "| Matched claim | {} |",
+                    summary_code(check).replace('|', "\\|")
+                )
+                .unwrap();
+            }
+        }
+        Ok(None) => {
+            summary.push_str("**Run CI normally.**\n\nOnly pull-request events can skip CI.\n")
+        }
+        Err(error) => {
+            writeln!(
+                summary,
+                "**Run CI normally.**\n\nVerification failed: {}\n",
+                summary_code(&error.to_string())
+            )
+            .unwrap();
+        }
+    }
+    summary.push_str("\nClaims are trusted statements, not proof that tests ran.\n");
+    summary
 }
 
 fn action() -> Result<()> {
-    let skip = match action_verdict() {
-        Ok(skip) => skip,
+    let verdict = action_verdict();
+    let skip = match &verdict {
+        Ok(Some(report)) => matches!(report.verification, Verification::Matched { .. }),
+        Ok(None) => false,
         Err(error) => {
             println!(
                 "already-tested: {} Running CI normally.",
@@ -143,6 +226,18 @@ fn action() -> Result<()> {
             "No verified claim; run CI normally."
         }
     );
+    if let Some(path) = env::var_os("GITHUB_STEP_SUMMARY")
+        && let Err(error) = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .and_then(|mut file| file.write_all(action_summary(&verdict).as_bytes()))
+    {
+        eprintln!(
+            "already-tested: Could not write job summary: {}",
+            error.to_string().replace(['\r', '\n'], " ")
+        );
+    }
     Ok(())
 }
 
