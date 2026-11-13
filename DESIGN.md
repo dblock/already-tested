@@ -54,6 +54,8 @@ The CLI rejects all staged/unstaged tracked changes, regardless of filters, and 
 
 Temporary Git indexes evaluate pathspecs without changing the caller's index. Read committed blobs, disable replacement objects, never execute claim text or working-tree filters, and never fetch automatically. Each Git command's output is capped at 64 MiB. Regular/executable/binary files work; selected symlinks, submodules, and invalid UTF-8 paths are errors.
 
+Each verification loads one committed snapshot and reuses its entries and blob bytes across candidate scopes. Each candidate is still hashed with its own check identity. Snapshots are never cached across calls, and a distinct executing-workflow revision still supplies the workflow bytes regardless of source filters.
+
 ## GitHub Action
 
 The composite Action invokes a platform-selected native binary. No separate CLI installation step is needed in the workflow.

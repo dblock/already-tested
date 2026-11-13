@@ -825,6 +825,25 @@ fn glob_claims_keep_canonical_hash_binding_and_never_union_partial_claims() {
 }
 
 #[test]
+fn verification_checks_later_scopes_and_refreshes_content_between_calls() {
+    let repo = Repo::new();
+    let gate = Options::new(repo.path(), WORKFLOW, "test-linux");
+    let stale = ["test-{linux,a}", "test-{linux,b}"]
+        .map(|check| create_claim(&Options::new(repo.path(), WORKFLOW, check)).unwrap())
+        .join("\n");
+    repo.write("src/add.rs", "changed source");
+    repo.commit();
+    let fresh = create_claim(&Options::new(repo.path(), WORKFLOW, "test-*")).unwrap();
+    let body = format!("{stale}\n{fresh}");
+    assert!(verify_claim(Some(&body), &gate).unwrap());
+    repo.write("src/add.rs", "changed again");
+    repo.commit();
+    assert!(!verify_claim(Some(&body), &gate).unwrap());
+    let fresh = create_claim(&Options::new(repo.path(), WORKFLOW, "test-*")).unwrap();
+    assert!(verify_claim(Some(&format!("{body}\n{fresh}")), &gate).unwrap());
+}
+
+#[test]
 fn check_glob_resource_limits_request_normal_ci() {
     let repo = Repo::new();
     let expensive = format!("*a{}", "?".repeat(32));

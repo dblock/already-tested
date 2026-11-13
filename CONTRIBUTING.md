@@ -25,6 +25,12 @@ Run tests and lint immediately before committing every development push. For dis
 
 For coverage, install `cargo-llvm-cov` 0.9.1 and the toolchain's `llvm-tools-preview` component, then run `cargo llvm-cov --locked --workspace --all-targets --summary-only`. Inspect meaningful line/branch gaps; do not exclude real code or add trivial assertions to inflate coverage.
 
+## Benchmarks
+
+Run `cargo bench --locked --bench claims` to measure the public library against temporary real Git repositories with 10 and 200 distinct 4,096-byte source files plus a workflow. It covers claim creation, matching named/glob claims, missing claims, stale named claims, and 31 distinct stale scopes that each cover the gate. Fixture setup and claim preparation are outside the timed operations; Git process startup, committed-file reads, scope matching, and hashing are included.
+
+The dependency-free stable-Rust harness reports the median and minimum/maximum of nine samples after one warm-up per case. Compare release-mode runs on the same host under similar load; file system caches are warm, and these are local latency measurements, not CI runner savings or statistical guarantees. Missing claims may measure below the printed millisecond resolution. `cargo test --locked --workspace --all-targets` runs a one-sample small-fixture smoke check instead of the full benchmark.
+
 ## Tests
 
 Core tests use isolated real Git repositories, actual CLI/Action processes, SHA-1/SHA-256 object formats, and committed protocol conformance fixtures. Node is not required by tests. Maintenance tests cover heading/paragraph rules, YAML names, and platform selection. Package checks install real checksummed archives and test installed CLI/Action behavior.
