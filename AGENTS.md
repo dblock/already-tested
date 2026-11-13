@@ -16,6 +16,10 @@ Test behavior with real Git/CLI/Action processes and installed native archives. 
 
 Before every development push, run `cargo test --locked --workspace --all-targets` and `cargo xtask lint` immediately before committing. For binary, installer, interface, or packaging changes also run `cargo xtask package`; reuse results only for unchanged content/configuration.
 
+Measure each complete validation command's wall-clock duration during its final run, not by rerunning it solely for timing. Append the measured duration, rounded to the nearest whole second, to the normal disclosure label using `--summary`, for example `--summary 'lint - passed (29s)'`. Use the actual elapsed time for the claimed command or sequence, not time spent on other checks or the overall session; never guess a duration.
+
+When one aggregate command covers multiple checks, such as `cargo xtask lint` covering `lint` and `dylint`, reuse its measured total for each disclosure and retain the actual aggregate command in `--command`. Do not invent separate per-job timings. Customize only the display summary; preserve the generated canonical claim.
+
 Use `cargo llvm-cov --locked --workspace --all-targets --summary-only` to inspect coverage. Follow [setup and test conventions](CONTRIBUTING.md#setup-and-validation), including verified current stable tools, separate Test/Coverage/Lint/Package workflows, explicit `matrix.entry` lists, and parallel Coveralls reporting.
 
 Keep all six platform binaries and both installer scripts in every GitHub Release. Preserve automatic native selection, HTTPS/checksum verification, failure-safe replacement, and CLI/claim/Action contracts across distribution changes. Do not claim cross-platform validation from only one local host; native CI validates other archives.

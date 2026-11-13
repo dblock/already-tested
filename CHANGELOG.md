@@ -14,6 +14,7 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ### Changed
 
+- [#26](https://github.com/dblock/already-tested/pull/26): Require measured elapsed time in claim labels, such as `lint - passed (29s)`, in contributor and user agent instructions - [@dblock](https://github.com/dblock).
 - [#25](https://github.com/dblock/already-tested/pull/25): Require agents to publish eligible local CI claims after validation instead of omitting portable lint claims when a platform-specific environment is uncertain - [@dblock](https://github.com/dblock).
 - [#19](https://github.com/dblock/already-tested/pull/19): Upgrade rust-crate-release to v0.1.2 to cache release-tool compilation dependencies without skipping release validation - [@dblock](https://github.com/dblock).
 
