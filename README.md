@@ -53,7 +53,7 @@ Keep independent CI for external services, secrets, or environments you cannot r
 
 ### Prerequisite Job
 
-To skip all remaining jobs, add a small prerequisite job and gate the rest on its output. An omitted or empty `check` defaults to the literal `*`: the agent claims it ran everything covered by the gate.
+To skip all remaining jobs, add a small prerequisite job and gate the rest on its output. An omitted or empty `check` defaults to `*`: the agent claims it ran everything covered by the gate.
 
 Use an Action and CLI release supporting blanket claims in place of `<version-with-blanket-claims>`. Keep the triggers and permissions from the example above:
 
@@ -84,7 +84,7 @@ jobs:
       - run: ./script/ci
 ```
 
-Repeat the dependency and condition for every job you want to skip, preserving existing conditions, dependencies, and required-check names. Missing or stale claims, verifier failures, and pushes run normal CI; workflow cancellation is preserved. Named and blanket claims are separate identities, not glob matches. See [Design](DESIGN.md#github-action) for details.
+Repeat the dependency and condition for every job you want to skip, preserving existing conditions, dependencies, and required-check names. Missing or stale claims, verifier failures, and pushes run normal CI; workflow cancellation is preserved. A claim must cover the gate's entire check scope. See [check globs](#check-globs) for selective skipping.
 
 ## Usage
 
@@ -98,7 +98,7 @@ For the prerequisite-job pattern, add this to `AGENTS.md`, replacing the workflo
 - Install `already-tested` if needed using the [local CLI instructions](https://github.com/dblock/already-tested#local-cli).
 - Read `.github/workflows/test.yml` and run every job covered by its gate, including all matrix environments, using `./script/ci`. If anything was not tested, do not claim it; let CI run.
 - Commit the tested files and leave the tracked working tree clean.
-- Run `already-tested claim --workflow .github/workflows/test.yml --command './script/ci' --environment '<actual OS, CPU, and toolchain versions>'`. The default `*` claims all work covered by this workflow's gate.
+- Run `already-tested claim --workflow .github/workflows/test.yml --command './script/ci' --environment '<actual OS, CPU, and toolchain versions>'`. The default `*` claims all work covered by this workflow's gate; use `--check 'test-*'` only after running every matching check and environment.
 - Paste the entire output into the PR description, preserving its hidden claim.
 - After tracked source or workflow changes, retest, commit, and replace the claim.
 - Create a separate claim for each workflow you fully tested.
@@ -109,6 +109,19 @@ For per-step skipping, add `--check test-linux` to the claim command to match `c
 ## Configuration
 
 By default, all tracked files and the executing workflow are covered; untracked/ignored files are excluded. Claims require a clean tracked working tree. The CLI records your statement; it does not run the command. See [options, filters, installation settings, and limitations](DESIGN.md).
+
+### Check Globs
+
+Both CLI `--check` and Action `check` accept names or case-sensitive globs (`*`, `?`, `[a-z]`, `[!a-z]`, `{test,lint}-*`). Quote patterns in the shell and YAML. Use a release supporting check globs for both the Action and CLI.
+
+| Agent Claim | Workflow Gate | Skips? |
+| --- | --- | --- |
+| `*` | `test-linux` | Yes |
+| `test-*` | `test-linux` or `test-l*` | Yes |
+| `test-linux` | `test-*` | No |
+| `test-*` | `*` | No |
+
+One claim must cover every name the gate can match, with matching files and workflow. Overlap is not enough, and separate partial claims are never combined. For example, an agent can claim `--check 'test-*'` after running all test jobs, while leaving lint to CI.
 
 ### Local CLI
 

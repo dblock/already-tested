@@ -21,7 +21,9 @@ dependencies = [
 name = "already-tested"
 version = "0.2.0"
 dependencies = [
+ "globset",
  "regex",
+ "regex-automata",
  "serde",
  "serde_json",
  "sha2",

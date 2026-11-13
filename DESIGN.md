@@ -14,11 +14,11 @@ Rust implements the shared library, CLI, and `already-tested action` adapter. Gi
 already-tested claim --workflow .github/workflows/test.yml --check unit
 ```
 
-Paths are repository-relative even when called from a subdirectory. Workflows must be tracked `.yml`/`.yaml` files directly under `.github/workflows/`. Named check IDs use 1-128 ASCII letters, numbers, periods, underscores, colons, slashes, or hyphens, beginning with a letter/number. Omitting `--check` defaults to the literal `*`: a trusted statement that all work covered by that workflow's gate ran. It is not a glob, an enumeration of named claims, or proof of completeness. Named and blanket claims only match their exact check identity.
+Paths are repository-relative even when called from a subdirectory. Workflows must be tracked `.yml`/`.yaml` files directly under `.github/workflows/`. Named check IDs use 1-128 ASCII letters, numbers, periods, underscores, colons, slashes, or hyphens, beginning with a letter/number. Checks may also be case-sensitive globs using [globset syntax](https://docs.rs/globset/latest/globset/#syntax): `*`, `?`, character classes/ranges/negation, and brace alternatives. Backslash escaping is enabled on every platform; ordinary wildcards match `/` too. Patterns must be 1-128 ASCII characters without whitespace or control characters and match at least one valid named ID. Omitting `--check` defaults to `*`: a trusted statement that all work covered by that workflow's gate ran.
 
 | Option | Meaning |
 | --- | --- |
-| `--check <identifier>` | Named check or literal `*`; default: `*` |
+| `--check <identifier>` | Named check or glob; default: `*` |
 | `--files <pattern>` | Repeat to select tracked files; default: all |
 | `--summary <text>` | Expandable label; default: `<check> - passed`, or `All workflow checks - passed` for `*` |
 | `--command <text>` | Command actually validated; recorded, never executed |
@@ -37,7 +37,7 @@ The canonical representation is byte-compatible with JavaScript v1:
 <!-- already-tested:v1 {"workflow":".github/workflows/test.yml","check":"unit","hash":"sha256:0000000000000000000000000000000000000000000000000000000000000000"} -->
 ```
 
-Verification searches for the exact expected canonical string among any description text. Alternate JSON formatting, unknown versions, malformed claims, and changed hashes cannot match.
+Verification searches for the exact expected canonical string among any description text. If a candidate claim has a different check scope, it must cover the gate's entire scope, and its canonical hash is recomputed using the claim's own pattern. Alternate JSON formatting, unknown versions, malformed claims, and changed hashes cannot match. Named-check v1 bytes and the hash algorithm are unchanged.
 
 ## File Selection and Hashing
 
@@ -60,14 +60,16 @@ The composite Action invokes a platform-selected native binary. No separate CLI 
 
 | Input/Output | Meaning |
 | --- | --- |
-| `check` input | Named check or literal `*`; omitted or empty defaults to `*`; must match the CLI check identity |
+| `check` input | Named check or glob; omitted or empty defaults to `*`; a claim must cover its entire scope |
 | `files` input | Optional newline-separated Git pathspecs; must match CLI `--files` |
 | `version` input | Binary release; defaults to the Action's version |
 | `skip` output | String `true` for a matching claim; otherwise `false` |
 
 Use `if: steps.tested.outputs.skip != 'true'` on each replaceable step, with `tested` as the Action step ID. Pin a reviewed Action commit for immutable workflow dependencies.
 
-Omit `check`, leave it empty, or explicitly set `check: '*'` to verify a blanket claim. An agent must run all covered checks before generating that claim, including their required environments. No named claims are combined or inferred. Invalid nonempty IDs and verification errors request normal CI. Explicitly named checks retain their existing behavior and v1 claim bytes; blanket claims use the same framing and hash algorithm with `check` equal to `*`.
+Omit `check`, leave it empty, or explicitly set `check: '*'` to require coverage of all valid check IDs. A `test-*` claim covers a `test-linux` or `test-l*` gate, but a `test-linux` claim does not cover `test-*`, and `test-*` does not cover `*`. Mere overlap is insufficient. One claim must cover the entire gate; separate partial claims are not combined. Agents must run every check and environment covered by their claim's scope.
+
+Scope containment uses bounded deterministic automata over valid named IDs, not matching glob text against other glob text or enumerating claims in the PR as an inventory. Compilation is limited to 1 MiB each for the DFA and determinization workspace; comparisons visit at most 16,384 state pairs and consider IDs up to 128 characters. Verification examines at most 32 distinct relevant scopes including the gate itself. Invalid or empty scopes and exceeded resource limits request normal CI.
 
 For all-or-nothing job skipping, expose `skip` as a prerequisite job output and gate each covered job with `needs` and `if`. Include a status expression such as `!cancelled()` and test the prerequisite result so a failed verifier runs normal CI instead of silently skipping dependent jobs. Existing dependencies and conditions must remain intact. This pattern avoids allocating dependent runners but adds a prerequisite runner and scheduling delay when CI must run; it does not cancel the workflow or skip independent jobs. See the [prerequisite job and agent instructions](README.md#prerequisite-job).
 
