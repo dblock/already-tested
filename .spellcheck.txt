@@ -2,6 +2,7 @@ APIs
 CLI
 Changelog
 Clippy
+DFA
 Dylint
 Dylint's
 HTTPS
@@ -21,14 +22,17 @@ SVG
 UTF
 YAML
 appendable
+automata
 backticks
 changelog
 checksummed
 checksums
 dblock
 deduplicate
+determinization
 dylint
 excalc
+globset
 io
 js
 macOS

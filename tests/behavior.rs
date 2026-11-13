@@ -384,10 +384,10 @@ fn invalid_policy_and_refs_fail_before_generating_a_claim() {
         "two words",
         "$(touch bad)",
         &"a".repeat(129),
-        "unit*",
-        "**",
-        "test-?",
-        "[unit]",
+        "test-[",
+        "test-{a,b",
+        "test-\\",
+        "[*]",
     ] {
         let mut options = repo.options();
         options.check = check.into();
@@ -727,7 +727,7 @@ fn library_cli_and_action_complete_pr_head_and_description_edit_round_trip() {
 }
 
 #[test]
-fn blanket_claim_defaults_round_trip_without_matching_named_claims() {
+fn blanket_claim_defaults_round_trip_without_inferring_blanket_from_named_claims() {
     let repo = Repo::new();
     let source = repo.git(&["rev-parse", "HEAD"]);
     let default = repo.cli(&["claim", "--workflow", WORKFLOW]);
@@ -741,11 +741,11 @@ fn blanket_claim_defaults_round_trip_without_matching_named_claims() {
     for (claim, check, expected) in [
         (body.as_str(), None, true),
         (body.as_str(), Some("*"), true),
-        (body.as_str(), Some("unit"), false),
+        (body.as_str(), Some("unit"), true),
         (unit.as_str(), None, false),
         (unit.as_str(), Some("unit"), true),
         ("No claim.", None, false),
-        (body.as_str(), Some("unit*"), false),
+        (body.as_str(), Some("unit*"), true),
         (body.as_str(), Some(""), true),
     ] {
         let (result, output) = repo.action(claim.into(), &source, &[("INPUT_CHECK", check)]);
@@ -760,13 +760,105 @@ fn blanket_claim_defaults_round_trip_without_matching_named_claims() {
 }
 
 #[test]
+fn check_globs_require_full_scope_coverage_in_both_directions() {
+    let repo = Repo::new();
+    for (claim, gate, expected) in [
+        ("*", "test-linux", true),
+        ("test-*", "test-linux", true),
+        ("test-*", "test-l*", true),
+        ("test-linux", "test-*", false),
+        ("test-l*", "test-*", false),
+        ("test-*", "*", false),
+        ("test-*", "lint-*", false),
+        ("test-?", "test-[lm]", true),
+        ("test-[lm]", "test-?", false),
+        ("test-[lm]*", "test-linux", true),
+        ("test-[lm]*", "test-[lw]*", false),
+        ("test-[!w]*", "test-[lm]*", true),
+        ("test-[!w]*", "test-*", false),
+        ("{test,lint}-*", "test-*", true),
+        ("test-*", "{test,lint}-*", false),
+        ("test-*x", "test-x*", false),
+        ("**", "*", true),
+        ("test/*", "test/linux/*", true),
+        ("test/*", "lint/*", false),
+        ("?", "[a-z]", true),
+        ("[a-z]", "?", false),
+    ] {
+        let claim = create_claim(&Options::new(repo.path(), WORKFLOW, claim)).unwrap();
+        assert_eq!(
+            verify_claim(Some(&claim), &Options::new(repo.path(), WORKFLOW, gate)).unwrap(),
+            expected,
+            "{claim} -> {gate}"
+        );
+    }
+}
+
+#[test]
+fn glob_claims_keep_canonical_hash_binding_and_never_union_partial_claims() {
+    let repo = Repo::new();
+    let claim = create_claim(&Options::new(repo.path(), WORKFLOW, "test-*")).unwrap();
+    let gate = Options::new(repo.path(), WORKFLOW, "test-linux");
+    for invalid in [
+        claim.replace("\"check\":", "\"check\": "),
+        claim.replace("\"check\":\"test-*\"", "\"check\":\"*\""),
+        claim.replace("sha256:", "sha256:0"),
+        claim.replace(" -->", "oops -->"),
+        claim.replace(":v1 ", ":v2 "),
+    ] {
+        assert!(!verify_claim(Some(&invalid), &gate).unwrap(), "{invalid}");
+    }
+    let partial = ["test-linux", "test-windows"]
+        .map(|check| create_claim(&Options::new(repo.path(), WORKFLOW, check)).unwrap())
+        .join("\n");
+    assert!(
+        !verify_claim(
+            Some(&partial),
+            &Options::new(repo.path(), WORKFLOW, "test-*")
+        )
+        .unwrap()
+    );
+    let source = repo.git(&["rev-parse", "HEAD"]);
+    let (result, output) = repo.action(claim.into(), &source, &[("INPUT_CHECK", Some("test-l*"))]);
+    assert!(result.status.success());
+    assert_eq!(output, "skip=true\n");
+}
+
+#[test]
+fn check_glob_resource_limits_request_normal_ci() {
+    let repo = Repo::new();
+    let expensive = format!("*a{}", "?".repeat(32));
+    assert!(
+        create_claim(&Options::new(repo.path(), WORKFLOW, expensive))
+            .unwrap_err()
+            .to_string()
+            .contains("Cannot compile check scope")
+    );
+    let body = (0..33).map(|id| {
+        format!("<!-- already-tested:v1 {{\"workflow\":\"{WORKFLOW}\",\"check\":\"check-{id}\",\"hash\":\"sha256:bad\"}} -->")
+    }).collect::<Vec<_>>().join("\n");
+    let source = repo.git(&["rev-parse", "HEAD"]);
+    let (result, output) = repo.action(body.into(), &source, &[("INPUT_CHECK", None)]);
+    assert!(result.status.success());
+    assert_eq!(output, "skip=false\n");
+    assert!(
+        String::from_utf8(result.stdout)
+            .unwrap()
+            .contains("Too many distinct claim scopes")
+    );
+}
+
+#[test]
 fn blanket_claim_binds_workflow_and_filters_and_never_skips_pushes() {
     let repo = Repo::new();
     let source = repo.git(&["rev-parse", "HEAD"]);
-    let mut options = Options::new(repo.path(), WORKFLOW, "*");
+    let mut options = Options::new(repo.path(), WORKFLOW, "test-*");
     options.files = vec!["src/**".into()];
     let claim = create_claim(&options).unwrap();
-    let extra = [("INPUT_CHECK", None), ("INPUT_FILES", Some("src/**"))];
+    let extra = [
+        ("INPUT_CHECK", Some("test-linux")),
+        ("INPUT_FILES", Some("src/**")),
+    ];
     let (result, output) = repo.action(claim.clone().into(), &source, &extra);
     assert!(result.status.success());
     assert_eq!(output, "skip=true\n");

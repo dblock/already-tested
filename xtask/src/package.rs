@@ -240,6 +240,17 @@ fn installed_consumer(
         &["claim", "--workflow", ".github/workflows/test.yml"],
         root,
     )?;
+    let scoped_claim = invoke(
+        binary,
+        &[
+            "claim",
+            "--workflow",
+            ".github/workflows/test.yml",
+            "--check",
+            "test-*",
+        ],
+        root,
+    )?;
     let head = run("git", &["rev-parse", "HEAD"], root)?;
     let output = root.join("output");
     let event = root.join("event.json");
@@ -284,7 +295,11 @@ fn installed_consumer(
             (Some(""), blanket_claim.as_str(), "skip=true\n"),
             (Some("*"), blanket_claim.as_str(), "skip=true\n"),
             (None, claim.as_str(), "skip=false\n"),
-            (Some("unit"), blanket_claim.as_str(), "skip=false\n"),
+            (Some("unit"), blanket_claim.as_str(), "skip=true\n"),
+            (Some("test-linux"), scoped_claim.as_str(), "skip=true\n"),
+            (Some("test-l*"), scoped_claim.as_str(), "skip=true\n"),
+            (Some("lint-*"), scoped_claim.as_str(), "skip=false\n"),
+            (None, scoped_claim.as_str(), "skip=false\n"),
         ] {
             if let Some(check) = check {
                 action.env("INPUT_CHECK", check);

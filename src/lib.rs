@@ -12,6 +12,8 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+mod check;
+
 pub const PREFIX: &str = "<!-- already-tested:v1 ";
 const LIMIT: u64 = 64 * 1024 * 1024;
 pub type Result<T> = std::result::Result<T, Error>;
@@ -214,15 +216,7 @@ fn snapshot(options: &Options) -> Result<String> {
     {
         return fail("workflow must be a file under .github/workflows/ ending in .yml or .yaml.");
     }
-    if options.check != "*"
-        && !Regex::new(r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$")
-            .unwrap()
-            .is_match(&options.check)
-    {
-        return fail(
-            "check must be '*' or 1-128 characters using letters, numbers, '.', '_', ':', '/', or '-'.",
-        );
-    }
+    check::Scope::new(&options.check)?;
     let workflow_ref = options.workflow_ref.as_deref().unwrap_or(&options.r#ref);
     for value in [options.r#ref.as_str(), workflow_ref] {
         if value != "HEAD" && !valid_commit(value) {
@@ -387,5 +381,41 @@ pub fn verify_claim(body: Option<&str>, options: &Options) -> Result<bool> {
     let Some(body) = body.filter(|b| b.contains(PREFIX)) else {
         return Ok(false);
     };
-    Ok(body.contains(&snapshot(options)?))
+    if body.contains(&snapshot(options)?) {
+        return Ok(true);
+    }
+    let gate = check::Scope::new(&options.check)?;
+    let mut seen = std::collections::HashSet::from([options.check.clone()]);
+    for (offset, _) in body.match_indices(PREFIX) {
+        let part = &body[offset + PREFIX.len()..];
+        let mut values = serde_json::Deserializer::from_str(part).into_iter::<serde_json::Value>();
+        let Some(Ok(value)) = values.next() else {
+            continue;
+        };
+        if !part[values.byte_offset()..].starts_with(" -->")
+            || value["workflow"].as_str() != Some(options.workflow.as_str())
+        {
+            continue;
+        }
+        let Some(check) = value["check"].as_str() else {
+            continue;
+        };
+        if !seen.insert(check.to_owned()) {
+            continue;
+        }
+        if seen.len() > 32 {
+            return fail("Too many distinct claim scopes.");
+        }
+        let Ok(scope) = check::Scope::new(check) else {
+            continue;
+        };
+        if scope.covers(&gate)? {
+            let mut claimed = options.clone();
+            claimed.check = check.into();
+            if body.contains(&snapshot(&claimed)?) {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
 }

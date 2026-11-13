@@ -3,7 +3,7 @@ description: Skip duplicate CI using trusted, content-matched local-test claims.
 author: dblock
 inputs:
   check:
-    description: Check identifier; omitted or empty means a literal '*' blanket claim for all work covered by the workflow gate.
+    description: Check name or glob; a claim must cover its entire scope. Omitted or empty defaults to '*'.
     default: '*'
     required: false
   files:

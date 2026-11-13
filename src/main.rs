@@ -11,7 +11,7 @@ Run tests against committed source, then paste the generated expandable section 
 
 Options:
   --workflow <path>      Tracked .github/workflows/*.yml or *.yaml file
-  --check <identifier>   Job/environment identifier (default: * claims all work covered by the workflow gate)
+  --check <identifier>   Check name or glob (default: * claims all work covered by the workflow gate)
   --files <pattern>      Git path pattern; repeat to select files (default: all tracked files)
   --summary <text>       Disclosure label (default: <check> - passed)
   --command <text>       Command already validated; recorded, never executed
