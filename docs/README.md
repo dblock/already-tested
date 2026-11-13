@@ -14,6 +14,7 @@ Choose how much work to skip and adapt the complete examples:
 | --- | --- |
 | [Skip Individual Steps](github-actions.md) | A named gate before setup, dependency installation, and tests, including matrix jobs |
 | [Skip All Remaining Jobs](skip-jobs.md) | A small prerequisite job that skips every covered job before allocating runners |
+| [Azure Pipelines](azure-pipelines.md) | An Azure Repos PR gate for a single-repository YAML pipeline |
 | [Agent Instructions](agents.md) | Release-matched guidance, check mappings, and environment policies |
 | [CLI Installation and Reference](cli.md) | Platform installers, bundled instructions, claim commands, and options |
 | [Configuration](configuration.md) | Check globs, shared gates, file filters, and complete matching examples |

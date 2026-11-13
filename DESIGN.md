@@ -4,11 +4,11 @@
 
 Trusted PR-description claims avoid duplicate CI against matching committed source and workflows. They are not signing, authentication, execution evidence, or a security boundary. Anyone who can edit the description can forge them.
 
-The stable interfaces are `already-tested claim`, `already-tested verify`, the v1 claim/hash protocol, and Action inputs `check`/`files` with string output `skip=true` or `skip=false`. Project languages and toolchains are independent of this implementation. The JavaScript predecessor is [already-tested-js](https://github.com/dblock/already-tested-js).
+The stable interfaces are `already-tested claim`, `already-tested verify`, `already-tested ci`, the v1 claim/hash protocol, and Action inputs `check`/`files` with string output `skip=true` or `skip=false`. Project languages and toolchains are independent of this implementation. The JavaScript predecessor is [already-tested-js](https://github.com/dblock/already-tested-js).
 
 Rust implements the shared library, CLI, and CI adapters. `already-tested ci` is the neutral CI entry point; `already-tested action` remains a fixed GitHub Actions compatibility entry point, including for wrappers selecting older binary releases. Git 2.29+ is the only external runtime command. No Node/npm, Rust runtime, network service, automatic test execution, or test-runner adapter is required by the executable.
 
-`Options.ci` and CLI `--ci` share `auto` and `github-actions` selection. The Rust `Ci` type defaults to `Auto`, which currently resolves to GitHub Actions, the only supported system. Selection controls workflow validation and adapter routing, not canonical claim bytes or hash framing. It does not infer a system from remotes, workflow filenames, or repository contents.
+`Options.ci` and CLI `--ci` share `auto`, `github-actions`, and `azure-pipelines` selection. The Rust `Ci` type defaults to `Auto`; resolution uses only case-insensitive true values in `GITHUB_ACTIONS` and `TF_BUILD`. One enabled signal selects its system; neither falls back to GitHub Actions; both require an explicit choice. Explicit variants bypass detection. Never infer the system from remotes, workflow filenames, or repository contents. Selection controls workflow validation and `ci` adapter routing, not canonical claim bytes or hash framing.
 
 ## CLI and Claim Format
 
@@ -16,10 +16,11 @@ Rust implements the shared library, CLI, and CI adapters. `already-tested ci` is
 already-tested claim --workflow .github/workflows/test.yml --check unit
 ```
 
-Paths are repository-relative even when called from a subdirectory. Workflows must be tracked `.yml`/`.yaml` files directly under `.github/workflows/`. Named check IDs use 1-128 ASCII letters, numbers, periods, underscores, colons, slashes, or hyphens, beginning with a letter/number. Checks may also be case-sensitive globs using [globset syntax](https://docs.rs/globset/latest/globset/#syntax): `*`, `?`, character classes/ranges/negation, and brace alternatives. Backslash escaping is enabled on every platform; ordinary wildcards match `/` too. Patterns must be 1-128 ASCII characters without whitespace or control characters and match at least one valid named ID. Omitting `--check` defaults to `*`: a trusted statement that all work covered by that workflow's gate ran.
+Paths are repository-relative even when called from a subdirectory. Workflows must be tracked `.yml`/`.yaml` files; GitHub Actions retains its restriction to files directly under `.github/workflows/`, while Azure Pipelines permits paths such as `azure-pipelines.yml`. Absolute paths, traversal, backslashes, colons, and control characters are rejected. Named check IDs use 1-128 ASCII letters, numbers, periods, underscores, colons, slashes, or hyphens, beginning with a letter/number. Checks may also be case-sensitive globs using [globset syntax](https://docs.rs/globset/latest/globset/#syntax): `*`, `?`, character classes/ranges/negation, and brace alternatives. Backslash escaping is enabled on every platform; ordinary wildcards match `/` too. Patterns must be 1-128 ASCII characters without whitespace or control characters and match at least one valid named ID. Omitting `--check` defaults to `*`: a trusted statement that all work covered by that workflow's gate ran.
 
 | Option | Meaning |
 | --- | --- |
+| `--ci <system>` | CI system; default `auto` with GitHub Actions fallback |
 | `--check <identifier>` | Named check or glob; default: `*` |
 | `--files <pattern>` | Repeat to select tracked files; default: all |
 | `--summary <text>` | Expandable label; default: `<check> - passed`, or `All workflow checks - passed` for `*` |
@@ -88,6 +89,14 @@ Missing/stale/malformed claims, missing objects, unsupported inputs, installatio
 `verify_claim_details` retains the canonical matching claim's scope; `verify_claim` preserves the Boolean interface. The Action appends an escaped, bounded report to `GITHUB_STEP_SUMMARY` after writing its decision to `GITHUB_OUTPUT`. Reports show the gate, matched scope, workflow, and source commit when verification completes, or a normal-CI fallback reason otherwise. They never treat display metadata as evidence or infer which downstream jobs actually skipped. Summary failures only warn; installer failures also produce a report without weakening the normal-CI fallback. See [job summaries](docs/github-actions.md#job-summaries).
 
 Hashes do not prove execution, environment equivalence, external state, dependencies outside selected files, or compatibility with a newer base. Preserve independent integration/platform checks and branch protection.
+
+## Azure Pipelines
+
+The native `ci --ci azure-pipelines` adapter reads a supplied description from `stdin` or `--body-file` with the same UTF-8/1 MiB limit as `verify`. It only permits skips for `BUILD_REASON=PullRequest` and `BUILD_REPOSITORY_PROVIDER=TfsGit`. The queued build's `SYSTEM_PULLREQUEST_SOURCECOMMITID` supplies source and `BUILD_SOURCEVERSION` supplies the executing pipeline revision; both must be full commit IDs available locally. It never uses the current source revision from the PR API, fetches Git objects, changes checkout, or executes claim metadata. The explicit `--workflow`, `--check`, and repeated `--files` inputs feed the existing v1 verifier without changing GitHub claim bytes.
+
+`scripts/azure-pipelines.ps1` retrieves the Azure Repos PR description using the explicitly mapped `System.AccessToken`, then invokes the installed native binary. It sets the named step's `skip` output to `false` before any work and only publishes `true` for one exact successful native decision. Missing binaries, REST failures, invalid context, and verification errors request normal CI. The native adapter also returns success with `skip=false` on operational errors; failure to write its output is an error. Argument parsing errors remain nonzero and the wrapper retains its initial false output.
+
+Initial support is limited to Azure DevOps Services, Azure Repos Git, and a single-repository YAML pipeline with an explicitly supplied executing pipeline path. There is no Marketplace task, automatic binary installation, job summary, description-edit trigger, template expansion, or external configuration hashing. See the [Azure guide](docs/azure-pipelines.md) for setup and unsupported configurations.
 
 ## Binary Distribution
 

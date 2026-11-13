@@ -221,12 +221,26 @@ struct Snapshot {
 }
 
 fn validate_identity(options: &Options) -> Result<check::Scope> {
-    options.ci.resolve()?;
-    if !Regex::new(r"^\.github/workflows/[^/\\\x00\r\n]+\.ya?ml$")
-        .unwrap()
-        .is_match(&options.workflow)
+    if !options.workflow.ends_with(".yml") && !options.workflow.ends_with(".yaml")
+        || options.workflow.contains(['\\', ':'])
+        || options.workflow.chars().any(char::is_control)
+        || options
+            .workflow
+            .split('/')
+            .any(|part| matches!(part, "" | "." | ".."))
     {
-        return fail("workflow must be a file under .github/workflows/ ending in .yml or .yaml.");
+        return fail(
+            "workflow must be a repository-relative .yml or .yaml path without traversal.",
+        );
+    }
+    if options.ci.resolve()? == Ci::GitHubActions
+        && !Regex::new(r"^\.github/workflows/[^/\\\x00\r\n]+\.ya?ml$")
+            .unwrap()
+            .is_match(&options.workflow)
+    {
+        return fail(
+            "GitHub Actions workflow must be a file directly under .github/workflows/ ending in .yml or .yaml.",
+        );
     }
     check::Scope::new(&options.check)
 }

@@ -229,6 +229,7 @@ fn installed_consumer(
         "name: Test\non: push\n",
     )?;
     fs::write(root.join("example.txt"), "already tested\n")?;
+    fs::write(root.join("azure-pipelines.yml"), "steps: []\n")?;
     run("git", &["init", "-q", "-b", "master"], root)?;
     run("git", &["config", "user.name", "Package Fixture"], root)?;
     run(
@@ -308,6 +309,43 @@ fn installed_consumer(
         root,
     )?;
     let head = run("git", &["rev-parse", "HEAD"], root)?;
+    let azure_claim = invoke(
+        binary,
+        &[
+            "claim",
+            "--ci",
+            "azure-pipelines",
+            "--workflow",
+            "azure-pipelines.yml",
+        ],
+        root,
+    )?;
+    fs::write(&claim_file, azure_claim)?;
+    for (reason, expected) in [("PullRequest", true), ("IndividualCI", false)] {
+        let result = Command::new(binary)
+            .args([
+                "ci",
+                "--ci",
+                "azure-pipelines",
+                "--workflow",
+                "azure-pipelines.yml",
+                "--body-file",
+            ])
+            .arg(&claim_file)
+            .current_dir(root)
+            .env("BUILD_REASON", reason)
+            .env("BUILD_REPOSITORY_PROVIDER", "TfsGit")
+            .env("SYSTEM_PULLREQUEST_SOURCECOMMITID", head.trim())
+            .env("BUILD_SOURCEVERSION", head.trim())
+            .output()?;
+        if !result.status.success()
+            || String::from_utf8(result.stdout)?
+                != format!("##vso[task.setvariable variable=skip;isOutput=true]{expected}\n")
+            || !result.stderr.is_empty()
+        {
+            return Err("Installed Azure adapter returned an incorrect decision".into());
+        }
+    }
     let output = root.join("output");
     let summary = root.join("summary");
     let event = root.join("event.json");
