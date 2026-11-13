@@ -1,16 +1,19 @@
 use already_tested::{
     Options, Verification, create_claim, head_commit, trim_js, valid_commit, verify_claim_details,
+    verify_committed_claim,
 };
 use std::collections::HashMap;
 use std::env;
 use std::fmt::Write as _;
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
 
 const HELP: &str = "Usage: already-tested claim --workflow <path> [--check <identifier>] [--files <pattern> ...]
+       already-tested verify --workflow <path> [--check <identifier>] [--files <pattern> ...] [--body-file <path>] [--json]
 
 Run tests against committed source, then paste the generated expandable section into the PR description.
+Verify reads a claim or PR description from stdin or --body-file and checks committed HEAD.
 
 Options:
   --workflow <path>      Tracked .github/workflows/*.yml or *.yaml file
@@ -20,8 +23,12 @@ Options:
   --command <text>       Command already validated; recorded, never executed
   --environment <text>   Environment actually validated; recorded, never inferred
   --raw                 Print only the canonical hidden claim, without display metadata
+  --body-file <path>     Read UTF-8 claim text from a file instead of stdin (verify only)
+  --json                Print a machine-readable verdict or error (verify only)
   --help                Show this help
   --version             Show the package version
+
+Verify exit codes: 0 = match, 1 = no match, 2 = invalid input or verification error.
 ";
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -241,10 +248,80 @@ fn action() -> Result<()> {
     Ok(())
 }
 
-fn run() -> Result<()> {
-    let args: Vec<_> = env::args().skip(1).collect();
+fn read_claim_text(input: impl Read) -> Result<String> {
+    let mut bytes = Vec::new();
+    input.take(1024 * 1024 + 1).read_to_end(&mut bytes)?;
+    if bytes.len() > 1024 * 1024 {
+        return Err("Claim text exceeds the 1 MiB limit.".into());
+    }
+    Ok(String::from_utf8(bytes)?)
+}
+
+fn verify(values: &HashMap<String, String>, files: Vec<String>) -> Result<u8> {
+    for name in ["raw", "summary", "command", "environment"] {
+        if values.contains_key(name) {
+            return Err(format!("--{name} is only valid for claim.").into());
+        }
+    }
+    let workflow = values
+        .get("workflow")
+        .filter(|value| !value.is_empty())
+        .ok_or("--workflow is required.")?;
+    let mut options = Options::new(
+        env::current_dir()?,
+        workflow,
+        values.get("check").map_or("*", String::as_str),
+    );
+    options.files = files;
+    let body = if let Some(path) = values.get("body-file") {
+        read_claim_text(fs::File::open(path)?)?
+    } else {
+        read_claim_text(std::io::stdin().lock())?
+    };
+    let verification = verify_committed_claim(&body, &options)?;
+    let (matched_check, reason, message) = match &verification {
+        Verification::Matched { check } => (
+            Some(check),
+            "matched",
+            "A canonical claim covers this gate and committed content.",
+        ),
+        Verification::NoMatch if !body.contains(already_tested::PREFIX) => (
+            None,
+            "missing_claim",
+            "No supported claim was found in the supplied text. Run CI normally.",
+        ),
+        Verification::NoMatch => (
+            None,
+            "no_matching_claim",
+            "No canonical claim covers this gate with matching committed files, file selection, and workflow. Run CI normally.",
+        ),
+    };
+    let skip = matched_check.is_some();
+    if values.contains_key("json") {
+        println!(
+            "{}",
+            serde_json::json!({
+                "skip": skip,
+                "reason": reason,
+                "message": message,
+                "workflow": options.workflow,
+                "check": options.check,
+                "matched_check": matched_check,
+            })
+        );
+    } else {
+        println!("already-tested: {message}");
+        if let Some(check) = matched_check {
+            println!("Matched scope: {check}");
+        }
+    }
+    Ok(u8::from(!skip))
+}
+
+fn run(args: &[String]) -> Result<u8> {
     if args == ["action"] {
-        return action();
+        action()?;
+        return Ok(0);
     }
     let mut values = HashMap::new();
     let mut files = Vec::new();
@@ -261,13 +338,14 @@ fn run() -> Result<()> {
                 .split_once('=')
                 .map_or((option, None), |(n, v)| (n, Some(v)));
             match name {
-                "raw" | "help" | "version" => {
+                "raw" | "help" | "version" | "json" => {
                     if inline.is_some() {
                         return Err(format!("--{name} does not take a value.").into());
                     }
                     values.insert(name.to_owned(), String::new());
                 }
-                "workflow" | "check" | "files" | "summary" | "command" | "environment" => {
+                "workflow" | "check" | "files" | "summary" | "command" | "environment"
+                | "body-file" => {
                     let value = if let Some(value) = inline {
                         value.to_owned()
                     } else {
@@ -298,9 +376,16 @@ fn run() -> Result<()> {
         println!("{}", env!("CARGO_PKG_VERSION"));
     } else if args.is_empty() || values.contains_key("help") {
         print!("{HELP}");
+    } else if positionals == ["verify"] && args.first().is_some_and(|arg| arg == "verify") {
+        return verify(&values, files);
     } else {
         if positionals != ["claim"] {
             return Err(HELP.trim_end().into());
+        }
+        for name in ["body-file", "json"] {
+            if values.contains_key(name) {
+                return Err(format!("--{name} is only valid for verify.").into());
+            }
         }
         for name in ["summary", "command", "environment"] {
             if let Some(value) = values.get(name) {
@@ -330,12 +415,35 @@ fn run() -> Result<()> {
         };
         println!("{output}");
     }
-    Ok(())
+    Ok(0)
 }
 
 fn main() {
-    if let Err(error) = run() {
-        eprintln!("already-tested: {error}");
-        std::process::exit(1);
-    }
+    let args: Vec<_> = env::args().skip(1).collect();
+    let verifying = args.first().is_some_and(|arg| arg == "verify");
+    let json = verifying
+        && args
+            .iter()
+            .take_while(|arg| arg.as_str() != "--")
+            .any(|arg| arg == "--json");
+    let status = match run(&args) {
+        Ok(status) => status,
+        Err(error) => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "skip": false,
+                        "reason": "error",
+                        "message": error.to_string(),
+                        "matched_check": null,
+                    })
+                );
+            } else {
+                eprintln!("already-tested: {error}");
+            }
+            if verifying { 2 } else { 1 }
+        }
+    };
+    std::process::exit(i32::from(status));
 }

@@ -53,3 +53,29 @@ For a [glob claim](configuration.md#check-globs), use a quoted pattern such as `
 If the workflow uses `files`, add the same [file filters](configuration.md#file-selection) as repeated `--files` arguments. Commit all intended inputs: untracked and ignored files are not included. The tracked working tree must be clean even when the dirty file is outside the selection.
 
 After any tracked source or workflow edit, rerun the affected complete checks, commit, and replace stale claims. Commit identities alone are not hash inputs, but agents should not assume an existing claim remains valid after source changes.
+
+## Verify Before Publishing
+
+Agents can use [local verification](cli.md#verify-a-claim) to check their generated output before editing the PR description. For example, after running every test covered by `test-*` and committing the tested files:
+
+```sh
+claim_file=$(mktemp)
+already-tested claim \
+  --workflow .github/workflows/test.yml \
+  --check 'test-*' \
+  --command '<complete commands actually run>' \
+  --environment '<all actual tested OS, CPU, and toolchain versions>' > "$claim_file" &&
+already-tested verify \
+  --workflow .github/workflows/test.yml \
+  --check test-linux \
+  --body-file "$claim_file" \
+  --json &&
+cat "$claim_file"
+status=$?
+rm "$claim_file"
+(exit "$status")
+```
+
+Match the verification workflow, gate scope, and repeated `--files` arguments to the Action, not necessarily to the broader claim scope. Exit `0` means the claim matches committed HEAD; exit `1` means no match; exit `2` means an input or verification error. Never publish a claim as verified after either failure status, and never infer that verification ran tests or covered dirty files.
+
+The agent still handles GitHub access with its existing tools. Read the latest PR description, preserve human-written text and unrelated claims, and replace the old claim for the workflow/check being updated. The CLI only generates and verifies text; it does not fetch or edit PRs.

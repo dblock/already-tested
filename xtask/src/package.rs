@@ -235,6 +235,41 @@ fn installed_consumer(
     if !claim.starts_with("<details>\n") || !claim.contains("<!-- already-tested:v1 ") {
         return Err("Installed CLI did not emit a complete claim".into());
     }
+    let claim_file = root.join(".git/claim.md");
+    for (body, expected_code, expected_reason) in [
+        (Some(claim.as_str()), 0, "matched"),
+        (Some("No claim."), 1, "missing_claim"),
+        (None, 2, "error"),
+    ] {
+        if let Some(body) = body {
+            fs::write(&claim_file, body)?;
+        } else {
+            fs::remove_file(&claim_file)?;
+        }
+        let result = Command::new(binary)
+            .args([
+                "verify",
+                "--workflow",
+                ".github/workflows/test.yml",
+                "--check",
+                "unit",
+                "--json",
+                "--body-file",
+            ])
+            .arg(&claim_file)
+            .current_dir(root)
+            .output()?;
+        let report: serde_json::Value = serde_json::from_slice(&result.stdout)?;
+        if result.status.code() != Some(expected_code)
+            || report["reason"] != expected_reason
+            || report["skip"] != (expected_code == 0)
+            || !result.stderr.is_empty()
+        {
+            return Err(
+                "Installed verify command returned an incorrect verdict or exit code".into(),
+            );
+        }
+    }
     let blanket_claim = invoke(
         binary,
         &["claim", "--workflow", ".github/workflows/test.yml"],

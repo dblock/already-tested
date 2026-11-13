@@ -114,6 +114,24 @@ impl Repo {
             .unwrap()
     }
 
+    fn cli_input(&self, args: &[&str], input: &[u8]) -> Output {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_already-tested"))
+            .args(args)
+            .current_dir(self.path())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut stdin = child.stdin.take().unwrap();
+        std::thread::scope(|scope| {
+            scope.spawn(move || {
+                let _ = stdin.write_all(input);
+            });
+            child.wait_with_output().unwrap()
+        })
+    }
+
     fn index_file(&self, path: &str, mode: &str, bytes: &[u8]) {
         let oid =
             String::from_utf8(self.git_bytes(&["hash-object", "-w", "--stdin"], bytes)).unwrap();
@@ -569,7 +587,12 @@ fn invalid_utf8_paths_and_real_symlinks_are_rejected() {
 #[test]
 fn cli_help_version_errors_and_nested_directory_behavior() {
     let repo = Repo::new();
-    for args in [vec![], vec!["--help"], vec!["claim", "--help"]] {
+    for args in [
+        vec![],
+        vec!["--help"],
+        vec!["claim", "--help"],
+        vec!["verify", "--help"],
+    ] {
         let output = repo.cli(&args);
         assert!(output.status.success());
         assert!(
@@ -626,6 +649,202 @@ fn cli_help_version_errors_and_nested_directory_behavior() {
     let dirty = repo.cli(&args);
     assert_eq!(dirty.status.code(), Some(1));
     assert!(dirty.stdout.is_empty());
+}
+
+#[test]
+fn verify_cli_reads_claim_text_and_reports_matches_with_distinct_exit_codes() {
+    let repo = Repo::new();
+    let exact = repo.claim();
+    let glob = create_claim(&Options::new(repo.path(), WORKFLOW, "u*")).unwrap();
+    let blanket = create_claim(&Options::new(repo.path(), WORKFLOW, "*")).unwrap();
+    let stale = exact.replace("sha256:", "sha256:0");
+    for (body, scope, reason) in [
+        (exact.as_str(), Some("unit"), "matched"),
+        (glob.as_str(), Some("u*"), "matched"),
+        (blanket.as_str(), Some("*"), "matched"),
+        (stale.as_str(), None, "no_matching_claim"),
+        ("<!-- already-tested:v1 nope -->", None, "no_matching_claim"),
+        ("No claim.", None, "missing_claim"),
+    ] {
+        let args = [
+            "verify",
+            "--workflow",
+            WORKFLOW,
+            "--check",
+            "unit",
+            "--json",
+        ];
+        let result = repo.cli_input(&args, body.as_bytes());
+        assert_eq!(result.status.code(), Some(i32::from(scope.is_none())));
+        assert!(result.stderr.is_empty());
+        let report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(report["skip"], scope.is_some());
+        assert_eq!(report["reason"], reason);
+        assert_eq!(report["workflow"], WORKFLOW);
+        assert_eq!(report["check"], "unit");
+        assert_eq!(report["matched_check"], serde_json::json!(scope));
+        repo.write(".git/claim.md", body);
+        let mut from_file = args.to_vec();
+        from_file.extend(["--body-file", ".git/claim.md"]);
+        let result = repo.cli(&from_file);
+        assert_eq!(result.status.code(), Some(i32::from(scope.is_none())));
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&result.stdout).unwrap(),
+            report
+        );
+    }
+    let args = ["verify", "--workflow", WORKFLOW, "--check", "unit"];
+    let result = repo.cli_input(&args, exact.as_bytes());
+    assert!(result.status.success());
+    assert!(result.stderr.is_empty());
+    assert!(
+        String::from_utf8(result.stdout)
+            .unwrap()
+            .contains("Matched scope: unit")
+    );
+    let result = repo.cli_input(&args, stale.as_bytes());
+    assert_eq!(result.status.code(), Some(1));
+    assert!(result.stderr.is_empty());
+    assert!(
+        String::from_utf8(result.stdout)
+            .unwrap()
+            .contains("Run CI normally.")
+    );
+    let result = repo.cli_input(
+        &["verify", "--workflow", WORKFLOW, "--json"],
+        blanket.as_bytes(),
+    );
+    assert!(result.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(report["check"], "*");
+    assert_eq!(report["matched_check"], "*");
+}
+
+#[test]
+fn verify_cli_errors_are_distinct_bounded_and_machine_readable() {
+    let repo = Repo::new();
+    let claim = repo.claim();
+    for extra in [
+        vec![],
+        vec!["--workflow", "bad.yml"],
+        vec!["--workflow", ".github/workflows/missing.yml"],
+        vec!["--workflow", WORKFLOW, "--check", ""],
+        vec!["--workflow", WORKFLOW, "--check", "bad-["],
+        vec!["--workflow", WORKFLOW, "--files", "missing"],
+        vec!["--workflow", WORKFLOW, "--body-file", "missing"],
+        vec!["--workflow", WORKFLOW, "--raw"],
+        vec!["--workflow", WORKFLOW, "--command", "echo bad"],
+        vec!["--workflow", WORKFLOW, "--summary", "passed"],
+        vec!["--workflow", WORKFLOW, "--environment", "untested"],
+        vec!["--workflow"],
+        vec!["--typo"],
+    ] {
+        let mut args = vec!["verify", "--json"];
+        args.extend(extra);
+        let result = repo.cli_input(&args, claim.as_bytes());
+        assert_eq!(result.status.code(), Some(2), "{args:?}");
+        assert!(result.stderr.is_empty(), "{args:?}");
+        let report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(report["skip"], false);
+        assert_eq!(report["reason"], "error");
+        assert!(report["matched_check"].is_null());
+        assert!(!report["message"].as_str().unwrap().is_empty());
+    }
+    let args = ["verify", "--workflow", WORKFLOW, "--json"];
+    for input in [vec![255], vec![b'x'; 1024 * 1024 + 1]] {
+        let result = repo.cli_input(&args, &input);
+        assert_eq!(result.status.code(), Some(2));
+        assert!(result.stderr.is_empty());
+        let report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(report["reason"], "error");
+    }
+    let result = repo.cli(&["verify", "--workflow", WORKFLOW, "--body-file", "missing"]);
+    assert_eq!(result.status.code(), Some(2));
+    assert!(result.stdout.is_empty());
+    assert!(
+        String::from_utf8(result.stderr)
+            .unwrap()
+            .starts_with("already-tested:")
+    );
+    for flag in ["--json", "--body-file=.git/claim.md"] {
+        let result = repo.cli(&["claim", "--workflow", WORKFLOW, flag]);
+        assert_eq!(result.status.code(), Some(1));
+        assert!(result.stdout.is_empty());
+    }
+    let result = repo.cli_input(
+        &["verify", "--workflow", "bad.yml", "--json"],
+        b"No supported claim.",
+    );
+    assert_eq!(result.status.code(), Some(2));
+    let empty = Repo::empty("sha1");
+    let result = empty.cli_input(&args, b"No supported claim.");
+    assert_eq!(result.status.code(), Some(2));
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&result.stdout).unwrap()["reason"],
+        "error"
+    );
+}
+
+#[test]
+fn verify_cli_checks_committed_head_and_filters_without_mutating_the_checkout() {
+    let repo = Repo::new();
+    let mut options = repo.options();
+    options.files = vec!["src/**".into()];
+    let claim = create_claim(&options).unwrap();
+    repo.write(".git/claim.md", &claim);
+    repo.write("src/add.rs", "dirty selected input");
+    repo.git(&["add", "src/add.rs"]);
+    repo.write("README.md", "dirty unselected input");
+    let index = fs::read(repo.path().join(".git/index")).unwrap();
+    let status = repo.git(&["status", "--porcelain"]);
+    let body_path = repo.path().join(".git/claim.md");
+    let args = [
+        "verify",
+        "--workflow",
+        WORKFLOW,
+        "--check",
+        "unit",
+        "--files",
+        "src/**",
+        "--body-file",
+        body_path.to_str().unwrap(),
+        "--json",
+    ];
+    let result = Command::new(env!("CARGO_BIN_EXE_already-tested"))
+        .args(args)
+        .current_dir(repo.path().join("src"))
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stdout)
+    );
+    assert_eq!(fs::read(repo.path().join(".git/index")).unwrap(), index);
+    assert_eq!(repo.git(&["status", "--porcelain"]), status);
+    assert_eq!(
+        fs::read_to_string(repo.path().join("src/add.rs")).unwrap(),
+        "dirty selected input"
+    );
+    let unfiltered = repo.cli_input(
+        &[
+            "verify",
+            "--workflow",
+            WORKFLOW,
+            "--check",
+            "unit",
+            "--json",
+        ],
+        claim.as_bytes(),
+    );
+    assert_eq!(unfiltered.status.code(), Some(1));
+    repo.commit();
+    let stale = repo.cli(&args);
+    assert_eq!(stale.status.code(), Some(1));
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&stale.stdout).unwrap()["reason"],
+        "no_matching_claim"
+    );
 }
 
 #[test]

@@ -4,7 +4,7 @@
 
 Trusted PR-description claims avoid duplicate CI against matching committed source and workflows. They are not signing, authentication, execution evidence, or a security boundary. Anyone who can edit the description can forge them.
 
-The stable interfaces are `already-tested claim`, the v1 claim/hash protocol, and Action inputs `check`/`files` with string output `skip=true` or `skip=false`. Project languages and toolchains are independent of this implementation. The JavaScript predecessor is [already-tested-js](https://github.com/dblock/already-tested-js).
+The stable interfaces are `already-tested claim`, `already-tested verify`, the v1 claim/hash protocol, and Action inputs `check`/`files` with string output `skip=true` or `skip=false`. Project languages and toolchains are independent of this implementation. The JavaScript predecessor is [already-tested-js](https://github.com/dblock/already-tested-js).
 
 Rust implements the shared library, CLI, and `already-tested action` adapter. Git 2.29+ is the only external runtime command. No Node/npm, Rust runtime, network service, automatic test execution, or test-runner adapter is required by the executable.
 
@@ -38,6 +38,10 @@ The canonical representation is byte-compatible with JavaScript v1:
 ```
 
 Verification searches for the exact expected canonical string among any description text. If a candidate claim has a different check scope, it must cover the gate's entire scope, and its canonical hash is recomputed using the claim's own pattern. Alternate JSON formatting, unknown versions, malformed claims, and changed hashes cannot match. Named-check v1 bytes and the hash algorithm are unchanged.
+
+`already-tested verify` reads a claim or description from standard input or `--body-file` and checks committed HEAD source and workflow. Input is UTF-8, capped at 1 MiB. It ignores dirty working-tree/index content and never fetches or edits PRs. Exit codes distinguish match (`0`), no match (`1`), and input/verification error (`2`). Optional JSON reports include `skip`, a reason/message, and the matched scope; verdicts also identify the requested workflow/check. Error JSON goes to stdout rather than mixing human diagnostics into the stream. See [local verification](docs/cli.md#verify-a-claim).
+
+The shared `verify_committed_claim` entry point validates the repository and policy even when no supported claim is supplied. Existing `verify_claim` and `verify_claim_details` retain their missing-claim fast path for CI. Both use the same canonical matching logic, committed snapshots, and resource limits. A non-match does not identify individual changed files or distinguish changed content from changed selection policy.
 
 ## File Selection and Hashing
 

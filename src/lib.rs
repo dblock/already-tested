@@ -429,6 +429,12 @@ pub fn verify_claim_details(body: Option<&str>, options: &Options) -> Result<Ver
     let Some(body) = body.filter(|b| b.contains(PREFIX)) else {
         return Ok(Verification::NoMatch);
     };
+    verify_committed_claim(body, options)
+}
+
+/// Verify local committed inputs, validating the policy and repository even when
+/// the supplied text has no supported claim. Does not require a clean checkout.
+pub fn verify_committed_claim(body: &str, options: &Options) -> Result<Verification> {
     let gate = validate_identity(options)?;
     let snapshot = snapshot(options)?;
     if body.contains(&snapshot.claim(&options.workflow, &options.check)?) {
