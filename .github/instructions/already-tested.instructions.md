@@ -2,11 +2,11 @@
 applyTo: "**"
 ---
 
-<!-- already-tested:managed sha256:439744f900189a78f76fc281bf5fb791fd0bb391c88cb552f10e5322d19828bd -->
-<!-- already-tested:instructions v0.3.0 -->
+<!-- already-tested:managed sha256:99ed3489087fba3c6465bb8f436ffa2999a983004aeb15cb8eafab47ea169010 -->
+<!-- already-tested:instructions v0.3.1 -->
 # Local CI Claims
 
-These consumer instructions ship with already-tested v0.3.0. Read the project's own agent instructions, CI workflows, check mappings, and environment policy first. Project-specific commands and stricter policies take precedence; this document does not grant permission to skip CI.
+These consumer instructions ship with already-tested v0.3.1. Read the project's own agent instructions, CI workflows, check mappings, and environment policy first. Project-specific commands and stricter policies take precedence; this document does not grant permission to skip CI.
 
 ## Run Complete Checks
 
