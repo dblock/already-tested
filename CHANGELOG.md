@@ -12,6 +12,7 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ### Fixed
 
+- [#30](https://github.com/dblock/already-tested/pull/30): Pin agent installation guidance to release-tagged documentation and advance its links during release - [@dblock](https://github.com/dblock).
 - [#22](https://github.com/dblock/already-tested/pull/22): Verify claims against the queued PR merge instead of PR head so untested base-branch changes run CI - [@dblock](https://github.com/dblock).
 
 ### Changed

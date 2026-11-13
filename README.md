@@ -44,7 +44,7 @@ Add this to your project's `AGENTS.md` or `.github/copilot-instructions.md`:
 ```markdown
 ## Local CI Claims
 
-- Install `already-tested` using https://github.com/dblock/already-tested/blob/master/docs/cli.md#installation.
+- Install `already-tested` using https://github.com/dblock/already-tested/blob/v0.3.0/docs/cli.md#installation.
 - Run `already-tested agent-instructions show` and follow its guidance before generating or updating claims.
 ```
 

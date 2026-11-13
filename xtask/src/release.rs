@@ -32,7 +32,7 @@ pub fn update(root: &Path, released: &str, next: &str) -> Result<()> {
         return Err("rcr must update Cargo.toml before the metadata hook".into());
     }
     let published = Regex::new(
-        r"(dblock/already-tested@v|already-tested/releases/download/v|--version v|-Version v)([0-9]+\.[0-9]+\.[0-9]+)",
+        r"(dblock/already-tested@v|already-tested/releases/download/v|already-tested/blob/v|--version v|-Version v)([0-9]+\.[0-9]+\.[0-9]+)",
     )?;
     let mut edits = Vec::new();
     let mut files: Vec<_> = [
