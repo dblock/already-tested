@@ -96,11 +96,10 @@ fn action_verdict() -> Result<Option<ActionReport>> {
     let event: serde_json::Value = serde_json::from_slice(&fs::read(
         env::var_os("GITHUB_EVENT_PATH").ok_or("GITHUB_EVENT_PATH is missing.")?,
     )?)?;
-    let source = event
-        .pointer("/pull_request/head/sha")
-        .and_then(|v| v.as_str())
+    let source = env::var("GITHUB_SHA")
+        .ok()
         .filter(|s| valid_commit(s))
-        .ok_or("The PR head commit ID is missing or invalid.")?;
+        .ok_or("The queued source commit ID is missing or invalid.")?;
     let workflow_ref = env::var("GITHUB_WORKFLOW_SHA")
         .ok()
         .filter(|s| valid_commit(s))
@@ -119,7 +118,7 @@ fn action_verdict() -> Result<Option<ActionReport>> {
         workflow.as_str(),
         if check.is_empty() { "*" } else { &check },
     );
-    options.r#ref = source.into();
+    options.r#ref = source;
     options.workflow_ref = Some(workflow_ref);
     options.files = env::var("INPUT_FILES")
         .unwrap_or_default()

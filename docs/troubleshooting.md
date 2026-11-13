@@ -6,7 +6,7 @@ Normal CI is the fallback, not an error: a claim can skip work only when verific
 
 Start with the gate's [job summary](github-actions.md#job-summaries) on the workflow run's Summary page. It shows a matched scope or a normal-CI fallback reason without requiring you to search the job logs.
 
-For a local preview, save the claim or PR description and run [verify](cli.md#verify-a-claim) with the workflow's gate and file selection. Its JSON report distinguishes a missing supported claim, no matching claim, and an operational error. It checks local committed HEAD, not uncommitted changes or a different executing workflow revision.
+For a local preview, save the claim or PR description and run [verify](cli.md#verify-a-claim) with the workflow's gate and file selection. Its JSON report distinguishes a missing supported claim, no matching claim, and an operational error. It checks local committed HEAD, not uncommitted changes, GitHub's queued merge, or a different executing workflow revision.
 
 ## CI Ran Despite a Claim
 
@@ -19,7 +19,7 @@ Check these in order:
 5. The CLI and Action use matching versions.
 6. File filters match on both sides. A default all-files claim does not satisfy a filtered gate.
 7. The tested files and executing workflow are unchanged. Changes brought in from the base branch can require a new claim.
-8. The required PR-head and executing-workflow commits exist in the runner's checkout. The normal PR checkout uses `fetch-depth: 2`; full history also works.
+8. The queued source (`GITHUB_SHA`, normally the PR merge) and executing-workflow (`GITHUB_WORKFLOW_SHA`) commits exist in the runner's checkout. Keep the default PR merge checkout with `fetch-depth: 2`; full history also works. Checking out PR head does not override the source used by the verifier.
 9. Installation and Git operations succeeded. Missing objects, unsupported platforms, invalid inputs, or verification resource limits request normal CI.
 
 Compare the Action's `skip` output with the step/job conditions. Even a matching claim cannot skip a step you left unconditioned or a job you left outside a prerequisite gate.
