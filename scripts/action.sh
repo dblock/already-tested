@@ -11,6 +11,11 @@ if [ -z "$binary" ]; then
   else
     printf '%s\n' 'already-tested: Could not install verifier; running CI normally.'
     printf 'skip=false\n' >> "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+      if ! printf '\n### Already Tested\n\n**Run CI normally.**\n\nCould not install verifier.\n\nClaims are trusted statements, not proof that tests ran.\n' >> "$GITHUB_STEP_SUMMARY"; then
+        printf '%s\n' 'already-tested: Could not write job summary.' >&2
+      fi
+    fi
     exit 0
   fi
 fi

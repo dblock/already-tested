@@ -1,4 +1,4 @@
-use already_tested::{Options, create_claim, verify_claim};
+use already_tested::{Options, Verification, create_claim, verify_claim, verify_claim_details};
 use serde::Deserialize;
 use std::fs;
 use std::io::Write;
@@ -153,6 +153,7 @@ impl Repo {
             .env("GITHUB_EVENT_NAME", "pull_request")
             .env("GITHUB_EVENT_PATH", self.path().join(".git/event.json"))
             .env("GITHUB_OUTPUT", self.path().join(".git/output"))
+            .env_remove("GITHUB_STEP_SUMMARY")
             .env("GITHUB_WORKSPACE", self.path())
             .env(
                 "GITHUB_WORKFLOW_REF",
@@ -835,10 +836,18 @@ fn verification_checks_later_scopes_and_refreshes_content_between_calls() {
     repo.commit();
     let fresh = create_claim(&Options::new(repo.path(), WORKFLOW, "test-*")).unwrap();
     let body = format!("{stale}\n{fresh}");
-    assert!(verify_claim(Some(&body), &gate).unwrap());
+    assert_eq!(
+        verify_claim_details(Some(&body), &gate).unwrap(),
+        Verification::Matched {
+            check: "test-*".into()
+        }
+    );
     repo.write("src/add.rs", "changed again");
     repo.commit();
-    assert!(!verify_claim(Some(&body), &gate).unwrap());
+    assert_eq!(
+        verify_claim_details(Some(&body), &gate).unwrap(),
+        Verification::NoMatch
+    );
     let fresh = create_claim(&Options::new(repo.path(), WORKFLOW, "test-*")).unwrap();
     assert!(verify_claim(Some(&format!("{body}\n{fresh}")), &gate).unwrap());
 }
@@ -947,6 +956,171 @@ fn action_binds_filters_identity_and_actual_executing_workflow_not_checkout() {
     let (result, output) = repo.action(claim.into(), &source, &[("INPUT_FILES", Some("src/**"))]);
     assert!(result.status.success());
     assert_eq!(output, "skip=false\n");
+}
+
+#[test]
+fn action_summaries_report_exact_glob_and_blanket_matches_without_copying_metadata() {
+    let repo = Repo::new();
+    let source = repo.git(&["rev-parse", "HEAD"]);
+    let summary = repo.path().join(".git/summary");
+    let path = summary.to_str().unwrap();
+    for (scope, gate, displayed_scope) in [
+        ("unit", Some("unit"), "` unit `"),
+        ("u*", Some("unit"), "` u* `"),
+        ("*", None, "` * `"),
+        ("*", Some(""), "` * `"),
+        (
+            "{unit,<b>|`[x](https://bad.invalid)}",
+            Some("unit"),
+            "`` {unit,<b>\\|`[x](https://bad.invalid)} ``",
+        ),
+    ] {
+        let claim = create_claim(&Options::new(repo.path(), WORKFLOW, scope)).unwrap();
+        let body = format!("<details>DO_NOT_COPY_METADATA</details>\n{claim}");
+        repo.write(".git/summary", "Earlier step.\n");
+        let (result, output) = repo.action(
+            body.into(),
+            &source,
+            &[("GITHUB_STEP_SUMMARY", Some(path)), ("INPUT_CHECK", gate)],
+        );
+        assert!(result.status.success());
+        assert_eq!(output, "skip=true\n");
+        let report = fs::read_to_string(&summary).unwrap();
+        assert!(report.starts_with("Earlier step.\n\n### Already Tested\n"));
+        assert!(report.contains("Matching local claim; gated work may be skipped."));
+        assert!(report.contains(&format!("| Workflow | ` {WORKFLOW} ` |")));
+        let displayed_gate = if gate.is_none_or(str::is_empty) {
+            "` * `"
+        } else {
+            "` unit `"
+        };
+        assert!(report.contains(&format!("| Gate | {displayed_gate} |")));
+        assert!(report.contains(&format!("| Source commit | ` {source} ` |")));
+        assert!(report.contains(&format!("| Matched claim | {displayed_scope} |")));
+        assert!(report.contains("Claims are trusted statements, not proof that tests ran."));
+        assert!(!report.contains("DO_NOT_COPY_METADATA"));
+    }
+}
+
+#[test]
+fn action_summaries_explain_fallbacks_without_guessing_why_a_claim_is_stale() {
+    let repo = Repo::new();
+    let claim = repo.claim();
+    repo.write("src/add.rs", "changed source");
+    let source = repo.commit();
+    let summary = repo.path().join(".git/summary");
+    let path = summary.to_str().unwrap();
+    for body in ["No claim.", claim.as_str()] {
+        repo.write(".git/summary", "");
+        let (result, output) =
+            repo.action(body.into(), &source, &[("GITHUB_STEP_SUMMARY", Some(path))]);
+        assert!(result.status.success());
+        assert_eq!(output, "skip=false\n");
+        let report = fs::read_to_string(&summary).unwrap();
+        assert!(report.contains("Run CI normally."));
+        assert!(
+            report.contains("No matching claim was found for this gate and committed content.")
+        );
+        assert!(!report.contains("Matched claim"));
+        assert!(!report.contains("source changed"));
+    }
+    for (extra, expected) in [
+        (
+            ("GITHUB_EVENT_NAME", Some("push")),
+            "Only pull-request events can skip CI.",
+        ),
+        (
+            ("GITHUB_WORKFLOW_SHA", None),
+            "The executing workflow commit ID is missing or invalid.",
+        ),
+        (("INPUT_CHECK", Some("[<b>|`")), "[<b>|`"),
+    ] {
+        repo.write(".git/summary", "");
+        let (result, output) = repo.action(
+            claim.clone().into(),
+            &source,
+            &[("GITHUB_STEP_SUMMARY", Some(path)), extra],
+        );
+        assert!(result.status.success());
+        assert_eq!(output, "skip=false\n");
+        let report = fs::read_to_string(&summary).unwrap();
+        assert!(report.contains("Run CI normally."));
+        assert!(report.contains(expected), "{report}");
+    }
+    let long_error = format!("<b>\n{}DO_NOT_COPY_TAIL", "x".repeat(1024));
+    repo.write(".git/summary", "");
+    let (result, output) = repo.action(
+        claim.into(),
+        &source,
+        &[
+            ("GITHUB_STEP_SUMMARY", Some(path)),
+            ("GIT_CONFIG_COUNT", Some("1")),
+            ("GIT_CONFIG_KEY_0", Some("core.abbrev")),
+            ("GIT_CONFIG_VALUE_0", Some(&long_error)),
+        ],
+    );
+    assert!(result.status.success());
+    assert_eq!(output, "skip=false\n");
+    let report = fs::read_to_string(&summary).unwrap();
+    assert!(report.contains("Verification failed:"));
+    assert!(report.contains("... `"));
+    assert!(report.len() < 2048);
+    assert!(!report.contains("DO_NOT_COPY_TAIL"));
+    assert!(!report.contains("<b>\n"));
+}
+
+#[test]
+fn summary_writes_append_and_never_change_the_action_decision_or_mask_output_errors() {
+    let repo = Repo::new();
+    let claim = repo.claim();
+    let source = repo.git(&["rev-parse", "HEAD"]);
+    let summary = repo.path().join(".git/summary");
+    let path = summary.to_str().unwrap();
+    repo.write(".git/summary", "Earlier step.\n");
+    for body in [claim.as_str(), "No claim."] {
+        let (result, _) = repo.action(body.into(), &source, &[("GITHUB_STEP_SUMMARY", Some(path))]);
+        assert!(result.status.success());
+    }
+    let previous = fs::read_to_string(&summary).unwrap();
+    assert!(previous.starts_with("Earlier step.\n"));
+    assert_eq!(previous.matches("### Already Tested").count(), 2);
+    for invalid in [
+        repo.path().to_path_buf(),
+        repo.path().join("missing/summary"),
+    ] {
+        for (body, expected) in [
+            (claim.as_str(), "skip=true\n"),
+            ("No claim.", "skip=false\n"),
+        ] {
+            let (result, output) = repo.action(
+                body.into(),
+                &source,
+                &[("GITHUB_STEP_SUMMARY", Some(invalid.to_str().unwrap()))],
+            );
+            assert!(result.status.success());
+            assert_eq!(output, expected);
+            assert!(
+                String::from_utf8(result.stderr)
+                    .unwrap()
+                    .contains("Could not write job summary")
+            );
+        }
+    }
+    let (result, output) = repo.action(claim.clone().into(), &source, &[]);
+    assert!(result.status.success());
+    assert_eq!(output, "skip=true\n");
+    assert!(result.stderr.is_empty());
+    assert_eq!(fs::read_to_string(&summary).unwrap(), previous);
+    let (result, _) = repo.action(
+        claim.into(),
+        &source,
+        &[
+            ("GITHUB_STEP_SUMMARY", Some(path)),
+            ("GITHUB_OUTPUT", Some(repo.path().to_str().unwrap())),
+        ],
+    );
+    assert!(!result.status.success());
+    assert_eq!(fs::read_to_string(&summary).unwrap(), previous);
 }
 
 #[test]

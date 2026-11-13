@@ -253,6 +253,7 @@ fn installed_consumer(
     )?;
     let head = run("git", &["rev-parse", "HEAD"], root)?;
     let output = root.join("output");
+    let summary = root.join("summary");
     let event = root.join("event.json");
     for wrapper in [false, true] {
         let mut action = if wrapper {
@@ -287,6 +288,7 @@ fn installed_consumer(
                 "dblock/already-tested/.github/workflows/test.yml@refs/heads/master",
             )
             .env("GITHUB_WORKFLOW_SHA", head.trim())
+            .env("GITHUB_STEP_SUMMARY", &summary)
             .env("GITHUB_OUTPUT", &output);
         for (check, body, expected) in [
             (Some("unit"), claim.as_str(), "skip=true\n"),
@@ -313,6 +315,7 @@ fn installed_consumer(
                 )?,
             )?;
             fs::write(&output, "")?;
+            fs::write(&summary, "Earlier step.\n")?;
             let result = action.output()?;
             if !result.status.success() || fs::read_to_string(&output)? != expected {
                 return Err(format!(
@@ -321,6 +324,19 @@ fn installed_consumer(
                 )
                 .into());
             }
+            let report = fs::read_to_string(&summary)?;
+            let expected = if expected == "skip=true\n" {
+                "Matching local claim; gated work may be skipped."
+            } else {
+                "Run CI normally."
+            };
+            if !report.starts_with("Earlier step.\n\n### Already Tested\n")
+                || !report.contains(expected)
+            {
+                return Err(
+                    "Installed Action adapter/wrapper did not append its job summary".into(),
+                );
+            }
         }
         if wrapper {
             action.env(
@@ -328,13 +344,32 @@ fn installed_consumer(
                 format!("{download_base}/missing"),
             );
             fs::write(&output, "")?;
+            fs::write(&summary, "")?;
             if !action.output()?.status.success() || fs::read_to_string(&output)? != "skip=false\n"
             {
                 return Err("Missing release must fall back to normal CI".into());
             }
+            if !fs::read_to_string(&summary)?.contains("Could not install verifier.") {
+                return Err("Installation failure must appear in the job summary".into());
+            }
+            action.env("GITHUB_STEP_SUMMARY", root);
+            fs::write(&output, "")?;
+            let failed_summary = action.output()?;
+            if !failed_summary.status.success()
+                || fs::read_to_string(&output)? != "skip=false\n"
+                || !String::from_utf8_lossy(&failed_summary.stderr)
+                    .contains("Could not write job summary")
+            {
+                return Err("Summary write failures must not change installation fallback".into());
+            }
+            action.env("GITHUB_STEP_SUMMARY", &summary);
+            let previous = fs::read(&summary)?;
             action.env("GITHUB_OUTPUT", root);
             if action.output()?.status.success() {
                 return Err("Action output write failures must not be masked".into());
+            }
+            if fs::read(&summary)? != previous {
+                return Err("Failed Action output writes must not append a summary".into());
             }
         }
     }

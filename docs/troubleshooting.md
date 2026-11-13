@@ -4,6 +4,8 @@
 
 Normal CI is the fallback, not an error: a claim can skip work only when verification succeeds.
 
+Start with the gate's [job summary](github-actions.md#job-summaries) on the workflow run's Summary page. It shows a matched scope or a normal-CI fallback reason without requiring you to search the job logs.
+
 ## CI Ran Despite a Claim
 
 Check these in order:
