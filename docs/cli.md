@@ -59,7 +59,7 @@ already-tested claim \
 
 Adapt the paths to include every intended input and the command/environment to your actual run. The tracked working tree must be clean. The claim hashes committed HEAD source and workflow; untracked and ignored files are excluded.
 
-Copy the entire expandable output into the PR description, not into a comment or a source file. Display metadata is explanatory only: it is not hashed and cannot substitute for actually running the checks. The hidden canonical comment must remain unmodified. See the [claim protocol](../DESIGN.md#cli-and-claim-format) for its exact representation.
+Copy the entire expandable output into the PR description, not into a comment or a source file. Display metadata is explanatory only: it is not hashed and cannot substitute for actually running the checks. Environment versions are not compared; record actual versions even when a [project-approved difference](agents.md#environment-matching) allows them to differ from CI. The hidden canonical comment must remain unmodified. See the [claim protocol](../DESIGN.md#cli-and-claim-format) for its exact representation.
 
 ## Options
 
@@ -74,7 +74,7 @@ already-tested claim --workflow <path> [--check <name-or-glob>] [options]
 | `--files <pattern>` | Repeat to select tracked files; omitted means all tracked files |
 | `--summary <text>` | Expandable label; default `<check> - passed`, or `All workflow checks - passed` for `*` |
 | `--command <text>` | Command already validated; recorded, never executed |
-| `--environment <text>` | Environment actually validated; recorded, never inferred |
+| `--environment <text>` | Environment actually validated; recorded, not compared or inferred |
 | `--raw` | Canonical comment only; incompatible with summary, command, and environment metadata |
 | `--help` | Usage; no repository needed |
 | `--version` | Package version; must be used alone; no repository needed |

@@ -4,6 +4,12 @@
 
 By default, claims bind all tracked files plus the executing workflow. Check identities describe the tested work; file filters describe its committed inputs. Both must match the workflow's gate.
 
+## Environment Policy
+
+`--environment` records the actual tested environment but is not compared or hashed. There is no automatic version tolerance: a content match is not a decision that different OS versions, CPU architectures, or toolchains are equivalent.
+
+Use [environment-matching instructions](agents.md#environment-matching) to require exact matching by default and document any project-approved exceptions in `AGENTS.md`. Encode required distinctions in check IDs, such as `test-macos-26.6-arm64`, and keep actual versions in the disclosure even when a permitted difference applies.
+
 ## Check Globs
 
 Both `--check` and Action `check` accept names or case-sensitive globs. Quote patterns in the shell and YAML.
