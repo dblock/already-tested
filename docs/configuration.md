@@ -124,7 +124,7 @@ Paste the complete output into the PR description. Both test jobs can skip; lint
 Use identical Git pathspecs in the workflow and claim command. This step-gate fragment includes source, tests, and a dependency lock file:
 
 ```yaml
-- uses: dblock/already-tested@v0.1.1
+- uses: dblock/already-tested@v0.2.0
   id: tested
   with:
     check: test-linux

@@ -11,7 +11,7 @@ Use the same version for the CLI and workflow Action. When changing the installa
 ### macOS and Linux
 
 ```sh
-curl -fsSL https://github.com/dblock/already-tested/releases/download/v0.1.1/install.sh | sh -s -- --version v0.1.1
+curl -fsSL https://github.com/dblock/already-tested/releases/download/v0.2.0/install.sh | sh -s -- --version v0.2.0
 export PATH="$HOME/.local/bin:$PATH"
 already-tested --version
 ```
@@ -22,8 +22,8 @@ Run in PowerShell:
 
 ```powershell
 $installer = "$env:TEMP\already-tested-install.ps1"
-Invoke-WebRequest https://github.com/dblock/already-tested/releases/download/v0.1.1/install.ps1 -OutFile $installer
-& $installer -Version v0.1.1
+Invoke-WebRequest https://github.com/dblock/already-tested/releases/download/v0.2.0/install.ps1 -OutFile $installer
+& $installer -Version v0.2.0
 $env:PATH = "$HOME\.local\bin;$env:PATH"
 already-tested --version
 ```
@@ -33,8 +33,8 @@ The installer selects Linux, macOS, or Windows on x86_64/ARM64 and verifies the 
 ### Custom Installation Directory
 
 ```sh
-curl -fsSL https://github.com/dblock/already-tested/releases/download/v0.1.1/install.sh |
-  sh -s -- --version v0.1.1 --bin-dir "$HOME/tools/already-tested"
+curl -fsSL https://github.com/dblock/already-tested/releases/download/v0.2.0/install.sh |
+  sh -s -- --version v0.2.0 --bin-dir "$HOME/tools/already-tested"
 export PATH="$HOME/tools/already-tested:$PATH"
 ```
 

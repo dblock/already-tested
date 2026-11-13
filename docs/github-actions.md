@@ -26,7 +26,7 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
       - name: Check Local Claim
-        uses: dblock/already-tested@v0.1.1
+        uses: dblock/already-tested@v0.2.0
         id: tested
         with:
           check: test-linux
@@ -87,7 +87,7 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
-      - uses: dblock/already-tested@v0.1.1
+      - uses: dblock/already-tested@v0.2.0
         id: tested
         with:
           check: ${{ matrix.entry.check }}
