@@ -4,6 +4,10 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+### Changed
+
+- [#10](https://github.com/dblock/already-tested/pull/10): Explain agent test-run claims in the README introduction and link to the introductory blog post - [@dblock](https://github.com/dblock).
+
 ## [0.1.1] - 2026-11-12
 
 ### Fixed

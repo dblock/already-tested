@@ -4,9 +4,11 @@
 
 [![Crates.io](https://img.shields.io/crates/v/already-tested.svg)](https://crates.io/crates/already-tested) [![Test](https://github.com/dblock/already-tested/actions/workflows/test.yml/badge.svg)](https://github.com/dblock/already-tested/actions/workflows/test.yml) [![Coverage](https://github.com/dblock/already-tested/actions/workflows/coverage.yml/badge.svg)](https://github.com/dblock/already-tested/actions/workflows/coverage.yml) [![Lint](https://github.com/dblock/already-tested/actions/workflows/lint.yml/badge.svg)](https://github.com/dblock/already-tested/actions/workflows/lint.yml) [![Package](https://github.com/dblock/already-tested/actions/workflows/package.yml/badge.svg)](https://github.com/dblock/already-tested/actions/workflows/package.yml)
 
-Run your existing CI checks locally, then let GitHub Actions skip matching work.
+Your AI agent already ran the tests and lints locally. Why make GitHub Actions repeat the same work? `already-tested` lets agents add local test-run claims to pull-request descriptions so CI can skip matching checks against the same committed files and workflow. Add a gate to your workflow and instructions to `AGENTS.md`; missing or stale claims run normal CI.
 
-**For trusted contributors only:** claims bind committed files and the workflow, but do not prove tests ran. Anyone who can edit the PR description can forge a claim.
+Of course, anyone who can edit the pull-request description can forge a claim. Don't ever disable CI on `main`.
+
+Read [Use Agent Test Run Claims to Skip CI](https://code.dblock.org/2026/11/12/use-agent-test-run-claims-to-skip-ci.html) for the motivation, setup, and measured CI savings.
 
 ## Installation
 
@@ -95,7 +97,7 @@ The installer selects your OS/CPU and verifies the archive. Supports Linux, macO
 
 ## Contributing
 
-[Contributing](CONTRIBUTING.md) | [Design](DESIGN.md) | [Changelog](CHANGELOG.md) | [Releasing](RELEASING.md) | [Agent Instructions](AGENTS.md). The original JavaScript implementation is [already-tested-js](https://github.com/dblock/already-tested-js).
+[Contributing](CONTRIBUTING.md) | [Design](DESIGN.md) | [Changelog](CHANGELOG.md) | [Releasing](RELEASING.md) | [Agent Instructions](AGENTS.md).
 
 ## License
 
