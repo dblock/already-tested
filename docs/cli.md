@@ -49,9 +49,16 @@ For mirrors or archive tests, `ALREADY_TESTED_DOWNLOAD_BASE_URL` accepts an HTTP
 
 ```sh
 already-tested agent-instructions show
+already-tested agent-instructions update
+already-tested agent-instructions update --path docs/local-ci.md
+already-tested agent-instructions update --force
 ```
 
-Print the consumer guidance bundled with the installed CLI version, offline and without Git or a repository. Read it before creating claims, and keep project-specific check mappings and environment policies in your own `AGENTS.md`. See [agent setup](agents.md#release-matched-instructions).
+`show` prints the consumer guidance bundled with the installed CLI version, offline and without Git or a repository. Read it before creating claims, and keep project-specific check mappings and environment policies in your own `AGENTS.md` or `.github/copilot-instructions.md`.
+
+`update` detects `.github/copilot-instructions.md` at the Git working tree root. If present, it writes `.github/instructions/already-tested.instructions.md` and updates a marked reference in the Copilot file, leaving `AGENTS.md` untouched. Otherwise it writes `.already-tested/agent-instructions.md` and updates `AGENTS.md`, creating it if needed. Handwritten content is preserved; nothing is staged.
+
+`--path` overrides the guide's repository-relative destination, not the detected entry point. Repeat the override on upgrades. Copilot `.instructions.md` files include `applyTo: "**"` front matter. Repeating unchanged updates is a no-op; older unedited guides are replaced atomically. Local edits and unrecognized guides require deliberate `--force`, which never overrides handwritten policy. Symbolic links, targets that are not regular files, parent traversal, Git metadata, and either policy entry point as the guide destination are refused. See [adoption and upgrades](agents.md#adopt-in-a-project).
 
 ## CI Selection
 

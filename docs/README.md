@@ -6,7 +6,7 @@ Read [Use Agent Test Run Claims to Skip CI](https://code.dblock.org/2026/11/12/u
 
 ## Getting Started
 
-Start with the [README quick start](../README.md#installation) to add a workflow gate, then copy the [agent setup](../README.md#usage) into your project's `AGENTS.md`. The agent installs the CLI, reads its bundled guidance, and inspects your CI workflows; you do not need to run those commands yourself.
+Start with the [README quick start](../README.md#installation) to add a workflow gate, then copy the [agent setup](../README.md#usage) into your project's `AGENTS.md` or `.github/copilot-instructions.md`. The agent installs the CLI, reads its bundled guidance, and inspects your CI workflows; you do not need to run those commands yourself.
 
 Choose how much work to skip and adapt the complete examples:
 

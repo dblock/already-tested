@@ -147,7 +147,7 @@ pub fn markdown_files(root: &Path) -> Result<Vec<PathBuf>, String> {
                 .is_dir()
             {
                 if directory != root
-                    || ["docs", "assets"]
+                    || ["docs", "assets", ".github"]
                         .iter()
                         .any(|name| path == root.join(name))
                 {
@@ -268,5 +268,27 @@ mod tests {
         assert!(documents(root).unwrap_err().contains("title-case"));
         fs::write(&guide, "# Guide\n\n[Missing](../../README.md#absent)\n").unwrap();
         assert!(documents(root).unwrap_err().contains("missing anchor"));
+        fs::write(&guide, "# Guide\n\n## Examples\n").unwrap();
+        fs::create_dir_all(root.join(".github/instructions")).unwrap();
+        let policy = root.join(".github/copilot-instructions.md");
+        fs::write(
+            &policy,
+            "# Instructions\n\n[Examples](../docs/nested/guide.md#examples)\n",
+        )
+        .unwrap();
+        assert!(documents(root).is_ok());
+        fs::write(
+            &policy,
+            "# Instructions\n\n[Missing](../README.md#absent)\n",
+        )
+        .unwrap();
+        assert!(documents(root).unwrap_err().contains("missing anchor"));
+        fs::write(&policy, "# Instructions\n").unwrap();
+        fs::write(
+            root.join(".github/instructions/local.instructions.md"),
+            "---\napplyTo: \"**\"\n---\n\n# bad heading\n",
+        )
+        .unwrap();
+        assert!(documents(root).unwrap_err().contains("title-case"));
     }
 }

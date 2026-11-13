@@ -6,6 +6,7 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ### Added
 
+- [#28](https://github.com/dblock/already-tested/pull/28): Add `agent-instructions update` with Copilot/`AGENTS.md` detection, custom guide paths, managed policy references, local-edit protection, and release metadata refresh - [@dblock](https://github.com/dblock).
 - [#27](https://github.com/dblock/already-tested/pull/27): Add `agent-instructions show` with release-matched consumer guidance in the CLI, native archives, and checksummed release assets - [@dblock](https://github.com/dblock).
 - [#23](https://github.com/dblock/already-tested/pull/23): Add shared `--ci` selection with GitHub Actions and automatic defaults, a matching Rust API, and a neutral CI command - [@dblock](https://github.com/dblock).
 

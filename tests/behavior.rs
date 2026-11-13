@@ -1046,16 +1046,383 @@ fn instructions_are_release_matched_offline_and_do_not_need_a_repository() {
     for args in [
         vec!["agent-instructions"],
         vec!["agent-instructions", "show", "--workflow", WORKFLOW],
+        vec!["agent-instructions", "update"],
+        vec!["agent-instructions", "--force"],
+        vec!["agent-instructions", "update", "--force", "--force"],
+        vec!["agent-instructions", "update", "--path"],
+        vec!["agent-instructions", "update", "--path", "--force"],
+        vec![
+            "agent-instructions",
+            "update",
+            "--path",
+            "a.md",
+            "--path=b.md",
+        ],
     ] {
         let invalid = Command::new(env!("CARGO_BIN_EXE_already-tested"))
             .args(args)
             .current_dir(directory.path())
             .output()
             .unwrap();
-        assert!(!invalid.status.success());
+        assert_eq!(invalid.status.code(), Some(1));
         assert!(invalid.stdout.is_empty());
     }
     assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 0);
+}
+
+#[test]
+fn instruction_updates_use_the_git_root_and_upgrade_unedited_older_copies() {
+    use sha2::{Digest, Sha256};
+    let repo = Repo::new();
+    repo.write(
+        "AGENTS.md",
+        "# Project Policy\n\nKeep these instructions.\n",
+    );
+    repo.write(
+        ".github/instructions/project.instructions.md",
+        "Existing directory alone does not select Copilot.\n",
+    );
+    repo.git(&["add", "AGENTS.md"]);
+    let index = repo.git(&["diff", "--cached", "--binary"]);
+    let head = repo.git(&["rev-parse", "HEAD"]);
+    let output = Command::new(env!("CARGO_BIN_EXE_already-tested"))
+        .args(["agent-instructions", "update"])
+        .current_dir(repo.path().join("src"))
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let path = repo.path().join(".already-tested/agent-instructions.md");
+    let contents = fs::read_to_string(&path).unwrap();
+    let (header, body) = contents.split_once('\n').unwrap();
+    let digest: String = Sha256::digest(body.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    assert_eq!(
+        header,
+        format!("<!-- already-tested:managed sha256:{digest} -->")
+    );
+    assert_eq!(
+        body.as_bytes(),
+        repo.cli(&["agent-instructions", "show"]).stdout
+    );
+    let modified = fs::metadata(&path).unwrap().modified().unwrap();
+    let policy = fs::read_to_string(repo.path().join("AGENTS.md")).unwrap();
+    assert!(policy.starts_with("# Project Policy\n\nKeep these instructions.\n"));
+    assert!(policy.contains(".already-tested/agent-instructions.md"));
+    let policy_modified = fs::metadata(repo.path().join("AGENTS.md"))
+        .unwrap()
+        .modified()
+        .unwrap();
+    assert!(repo.cli(&["agent-instructions", "update"]).status.success());
+    assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), modified);
+    assert_eq!(
+        fs::metadata(repo.path().join("AGENTS.md"))
+            .unwrap()
+            .modified()
+            .unwrap(),
+        policy_modified
+    );
+    let older = body.replace(env!("CARGO_PKG_VERSION"), "0.1.0");
+    let digest: String = Sha256::digest(older.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    repo.write(
+        ".already-tested/agent-instructions.md",
+        format!("<!-- already-tested:managed sha256:{digest} -->\n{older}"),
+    );
+    assert!(repo.cli(&["agent-instructions", "update"]).status.success());
+    assert_eq!(fs::read_to_string(&path).unwrap(), contents);
+    assert_eq!(repo.git(&["diff", "--cached", "--binary"]), index);
+    assert_eq!(repo.git(&["rev-parse", "HEAD"]), head);
+    assert_eq!(
+        fs::read_to_string(repo.path().join("AGENTS.md")).unwrap(),
+        policy
+    );
+}
+
+#[test]
+fn instruction_updates_detect_copilot_and_preserve_both_project_policies() {
+    let repo = Repo::new();
+    repo.write("AGENTS.md", "# Agent Policy\n\nDo not change this file.\n");
+    let policy = "# Copilot Policy\n\nKeep this policy without a final newline.";
+    repo.write(".github/copilot-instructions.md", policy);
+    let output = repo.cli(&["agent-instructions", "update"]);
+    assert!(output.status.success(), "{output:?}");
+    let relative = ".github/instructions/already-tested.instructions.md";
+    let path = repo.path().join(relative);
+    let contents = fs::read_to_string(&path).unwrap();
+    let wrapped = contents
+        .strip_prefix("---\napplyTo: \"**\"\n---\n\n")
+        .unwrap();
+    assert_eq!(
+        wrapped.split_once('\n').unwrap().1.as_bytes(),
+        repo.cli(&["agent-instructions", "show"]).stdout
+    );
+    assert!(!repo.path().join(".already-tested").exists());
+    let updated = fs::read_to_string(repo.path().join(".github/copilot-instructions.md")).unwrap();
+    assert!(updated.starts_with(policy));
+    assert!(updated.contains(relative));
+    assert_eq!(
+        fs::read_to_string(repo.path().join("AGENTS.md")).unwrap(),
+        "# Agent Policy\n\nDo not change this file.\n"
+    );
+    let modified = fs::metadata(&path).unwrap().modified().unwrap();
+    assert!(repo.cli(&["agent-instructions", "update"]).status.success());
+    assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), modified);
+    repo.write(
+        relative,
+        contents.replacen("applyTo: \"**\"", "applyTo: \"src/**\"", 1),
+    );
+    assert_eq!(
+        repo.cli(&["agent-instructions", "update"]).status.code(),
+        Some(1)
+    );
+    assert!(
+        repo.cli(&["agent-instructions", "update", "--force"])
+            .status
+            .success()
+    );
+    assert_eq!(fs::read_to_string(path).unwrap(), contents);
+    assert_eq!(
+        fs::read_to_string(repo.path().join(".github/copilot-instructions.md")).unwrap(),
+        updated
+    );
+}
+
+#[test]
+fn instruction_paths_override_detection_and_refresh_only_the_owned_reference() {
+    for copilot in [false, true] {
+        let repo = Repo::new();
+        let policy = if copilot {
+            ".github/copilot-instructions.md"
+        } else {
+            "AGENTS.md"
+        };
+        let original = "# Project Policy\n\nKeep all handwritten content.\n";
+        repo.write(policy, original);
+        let output = Command::new(env!("CARGO_BIN_EXE_already-tested"))
+            .args(["agent-instructions", "update", "--path", "docs/local-ci.md"])
+            .current_dir(repo.path().join("src"))
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let first = fs::read(repo.path().join("docs/local-ci.md")).unwrap();
+        assert!(!repo.path().join(".already-tested").exists());
+        assert!(!repo.path().join(".github/instructions").exists());
+        assert!(
+            repo.cli(&["agent-instructions", "update", "--path=docs/new-ci.md"])
+                .status
+                .success()
+        );
+        let updated = fs::read_to_string(repo.path().join(policy)).unwrap();
+        assert!(updated.starts_with(original));
+        assert!(updated.contains("docs/new-ci.md"));
+        assert!(!updated.contains("docs/local-ci.md"));
+        assert_eq!(
+            updated.matches("<!-- already-tested:reference -->").count(),
+            1
+        );
+        assert_eq!(
+            fs::read(repo.path().join("docs/local-ci.md")).unwrap(),
+            first
+        );
+        assert_eq!(fs::read(repo.path().join("docs/new-ci.md")).unwrap(), first);
+        if copilot {
+            assert!(!repo.path().join("AGENTS.md").exists());
+        }
+    }
+}
+
+#[test]
+fn instruction_paths_cannot_escape_the_worktree_or_replace_policy_or_git_files() {
+    let repo = Repo::new();
+    let outside = Repo::new();
+    let absolute = outside.path().join("outside.md");
+    let status = repo.git(&["status", "--porcelain"]);
+    let config = fs::read(repo.path().join(".git/config")).unwrap();
+    for path in [
+        "",
+        ".",
+        "../outside.md",
+        "docs/../outside.md",
+        ".git/config",
+        ".GIT/new.md",
+        "AGENTS.md",
+        ".github/copilot-instructions.md",
+        "docs/invalid\npath.md",
+        absolute.to_str().unwrap(),
+    ] {
+        let output = repo.cli(&["agent-instructions", "update", "--path", path, "--force"]);
+        assert_eq!(output.status.code(), Some(1), "{path}: {output:?}");
+        assert!(output.stdout.is_empty());
+    }
+    assert!(!absolute.exists());
+    assert_eq!(repo.git(&["status", "--porcelain"]), status);
+    assert_eq!(fs::read(repo.path().join(".git/config")).unwrap(), config);
+}
+
+#[test]
+fn instruction_updates_leave_invalid_policy_untouched_even_with_force() {
+    for policy in ["AGENTS.md", ".github/copilot-instructions.md"] {
+        for bytes in [
+            b"<!-- already-tested:reference -->\nIncomplete reference.\n".to_vec(),
+            vec![0xff],
+        ] {
+            let repo = Repo::new();
+            repo.write(policy, &bytes);
+            assert_eq!(
+                repo.cli(&["agent-instructions", "update", "--force"])
+                    .status
+                    .code(),
+                Some(1)
+            );
+            assert_eq!(fs::read(repo.path().join(policy)).unwrap(), bytes);
+            assert!(!repo.path().join(".already-tested").exists());
+            assert!(!repo.path().join(".github/instructions").exists());
+        }
+    }
+}
+
+#[test]
+fn instruction_updates_refuse_local_edits_unless_explicitly_forced() {
+    let repo = Repo::new();
+    assert!(repo.cli(&["agent-instructions", "update"]).status.success());
+    assert!(
+        fs::read_to_string(repo.path().join("AGENTS.md"))
+            .unwrap()
+            .contains(".already-tested/agent-instructions.md")
+    );
+    let path = repo.path().join(".already-tested/agent-instructions.md");
+    let original = fs::read(&path).unwrap();
+    let mut edited = original.clone();
+    edited.extend_from_slice(b"\nCustom project policy.\n");
+    for bytes in [edited, b"unrecognized instructions\n".to_vec(), vec![0xff]] {
+        repo.write(".already-tested/agent-instructions.md", &bytes);
+        let output = repo.cli(&["agent-instructions", "update"]);
+        assert_eq!(output.status.code(), Some(1));
+        assert!(
+            String::from_utf8(output.stderr)
+                .unwrap()
+                .contains("--force")
+        );
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        assert!(
+            repo.cli(&["agent-instructions", "update", "--force"])
+                .status
+                .success()
+        );
+        assert_eq!(fs::read(&path).unwrap(), original);
+    }
+}
+
+#[test]
+fn instruction_updates_reject_nonregular_directories_and_destinations() {
+    for parent_file in [true, false] {
+        let repo = Repo::new();
+        if parent_file {
+            repo.write(".already-tested", "keep parent file\n");
+        } else {
+            repo.write(
+                ".already-tested/agent-instructions.md/keep",
+                "keep directory\n",
+            );
+        }
+        for force in [false, true] {
+            let args = if force {
+                vec!["agent-instructions", "update", "--force"]
+            } else {
+                vec!["agent-instructions", "update"]
+            };
+            assert_eq!(repo.cli(&args).status.code(), Some(1));
+        }
+        if parent_file {
+            assert_eq!(
+                fs::read(repo.path().join(".already-tested")).unwrap(),
+                b"keep parent file\n"
+            );
+        } else {
+            assert!(
+                repo.path()
+                    .join(".already-tested/agent-instructions.md")
+                    .is_dir()
+            );
+        }
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn instruction_updates_never_follow_symlinked_directories_or_files() {
+    use std::os::unix::fs::symlink;
+    for directory_link in [true, false] {
+        let repo = Repo::new();
+        let outside = Repo::new();
+        let target = outside.path().join("agent-instructions.md");
+        outside.write("agent-instructions.md", b"outside policy\n");
+        let files = fs::read_dir(outside.path()).unwrap().count();
+        if directory_link {
+            symlink(outside.path(), repo.path().join(".already-tested")).unwrap();
+        } else {
+            repo.write(".already-tested/keep", "keep directory\n");
+            symlink(
+                &target,
+                repo.path().join(".already-tested/agent-instructions.md"),
+            )
+            .unwrap();
+        }
+        for args in [
+            vec!["agent-instructions", "update"],
+            vec!["agent-instructions", "update", "--force"],
+        ] {
+            assert_eq!(repo.cli(&args).status.code(), Some(1));
+        }
+        assert_eq!(fs::read(&target).unwrap(), b"outside policy\n");
+        assert_eq!(fs::read_dir(outside.path()).unwrap().count(), files);
+    }
+    for link in [
+        "AGENTS.md",
+        ".github/copilot-instructions.md",
+        ".github/instructions",
+        "docs/linked",
+    ] {
+        let repo = Repo::new();
+        let outside = Repo::new();
+        outside.write("policy.md", b"outside policy\n");
+        let directory_link = link == ".github/instructions" || link == "docs/linked";
+        if link == ".github/instructions" {
+            repo.write(".github/copilot-instructions.md", "# Copilot Policy\n");
+        }
+        if link == "docs/linked" {
+            repo.write("docs/keep", "keep parent directory\n");
+        }
+        let target = if directory_link {
+            outside.path().to_path_buf()
+        } else {
+            outside.path().join("policy.md")
+        };
+        symlink(&target, repo.path().join(link)).unwrap();
+        let status = repo.git(&["status", "--porcelain"]);
+        let output = if link == "docs/linked" {
+            repo.cli(&[
+                "agent-instructions",
+                "update",
+                "--path",
+                "docs/linked/guide.md",
+                "--force",
+            ])
+        } else {
+            repo.cli(&["agent-instructions", "update", "--force"])
+        };
+        assert_eq!(output.status.code(), Some(1), "{link}: {output:?}");
+        assert_eq!(repo.git(&["status", "--porcelain"]), status);
+        assert_eq!(
+            fs::read(outside.path().join("policy.md")).unwrap(),
+            b"outside policy\n"
+        );
+        assert!(!outside.path().join("guide.md").exists());
+    }
 }
 
 #[test]

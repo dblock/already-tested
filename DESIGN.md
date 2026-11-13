@@ -93,6 +93,10 @@ Hashes do not prove execution, environment equivalence, external state, dependen
 
 `already-tested agent-instructions show` prints version-matched consumer guidance embedded from `assets/agent-instructions.md`, with no repository or network access. The source crate includes the template; native archives contain the rendered document alongside the executable and license. Release publication renders standalone instructions and their checksum from the tagged template. Project contributor instructions are separate; upgrading a binary does not edit downstream policy.
 
+`already-tested agent-instructions update` is an explicit offline operation on the current Git working tree. When `.github/copilot-instructions.md` exists, it writes `.github/instructions/already-tested.instructions.md` and adds or refreshes a managed reference in the Copilot file, leaving `AGENTS.md` untouched. Otherwise it writes `.already-tested/agent-instructions.md` and updates `AGENTS.md`, creating that entry point if absent. Handwritten content outside the marked reference stays unchanged.
+
+`--path` overrides the guide's repository-relative destination without changing entry-point detection. Files ending in `.instructions.md` include Copilot's repository-wide `applyTo: "**"` front matter. Paths cannot escape the working tree, target Git metadata, or replace either policy entry point. Symbolic links and targets that are not regular files are rejected. Each file is replaced atomically, and identical contents are a no-op. A wrapper checksum identifies unedited managed guides from older releases offline; this is edit detection, not a security boundary. `--force` deliberately replaces customized guides, never handwritten policy. Changing destinations does not delete old copies or references in other entry points.
+
 | Platform | Target |
 | --- | --- |
 | Linux x86_64 | `x86_64-unknown-linux-musl` |

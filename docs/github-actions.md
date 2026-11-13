@@ -57,7 +57,7 @@ already-tested claim \
   --environment '<actual OS, CPU, and toolchain versions>'
 ```
 
-Paste the entire output into the PR description. See [agent instructions](agents.md) for an `AGENTS.md` section you can copy. A macOS run cannot justify a Linux claim.
+Paste the entire output into the PR description. See [project setup](agents.md#project-setup) for the minimal `AGENTS.md` instructions. A macOS run cannot justify a Linux claim.
 
 ## Matrix Jobs
 
