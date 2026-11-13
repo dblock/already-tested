@@ -290,8 +290,8 @@ fn installed_consumer(
     let output = root.join("output");
     let summary = root.join("summary");
     let event = root.join("event.json");
-    for wrapper in [false, true] {
-        let mut action = if wrapper {
+    for entry in ["action", "ci", "wrapper"] {
+        let mut action = if entry == "wrapper" {
             let mut action = Command::new("sh");
             action.arg(
                 source
@@ -302,7 +302,10 @@ fn installed_consumer(
             action
         } else {
             let mut action = Command::new(binary);
-            action.arg("action");
+            action.arg(entry);
+            if entry == "ci" {
+                action.args(["--ci", "github-actions"]);
+            }
             action
         };
         action
@@ -374,7 +377,7 @@ fn installed_consumer(
                 );
             }
         }
-        if wrapper {
+        if entry == "wrapper" {
             action.env(
                 "ALREADY_TESTED_DOWNLOAD_BASE_URL",
                 format!("{download_base}/missing"),

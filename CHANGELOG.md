@@ -4,6 +4,10 @@ All notable changes are documented here using [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+### Added
+
+- [#23](https://github.com/dblock/already-tested/pull/23): Add shared `--ci` selection with GitHub Actions and automatic defaults, a matching Rust API, and a neutral CI command - [@dblock](https://github.com/dblock).
+
 ### Fixed
 
 - [#22](https://github.com/dblock/already-tested/pull/22): Verify claims against the queued PR merge instead of PR head so untested base-branch changes run CI - [@dblock](https://github.com/dblock).

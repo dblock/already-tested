@@ -42,6 +42,31 @@ On Windows, pass `-BinDir "$HOME\tools\already-tested"` to the downloaded instal
 
 For mirrors or archive tests, `ALREADY_TESTED_DOWNLOAD_BASE_URL` accepts an HTTPS directory or `file://` URL containing the archive and checksum. Other schemes are rejected; an empty override uses the default release URL. POSIX also accepts `ALREADY_TESTED_VERSION` and `ALREADY_TESTED_BIN_DIR`. See [binary distribution](../DESIGN.md#binary-distribution) for platform targets.
 
+## CI Selection
+
+`claim`, `verify`, and `ci` accept `--ci auto` (the default) or `--ci github-actions`. GitHub Actions is currently the only supported system, so automatic selection resolves to GitHub Actions both in CI and locally. Remotes, workflow filenames, and repository contents are not detection signals.
+
+```sh
+already-tested claim --ci github-actions --workflow .github/workflows/test.yml --check test-linux
+already-tested verify --ci auto --workflow .github/workflows/test.yml --check test-linux < claim.md
+```
+
+Only generate claims after running the named complete checks in their required environments. CI selection controls workflow validation and adapter routing, not the v1 claim/hash format.
+
+### Rust API
+
+The shared API uses the same policy through `Options.ci`, which defaults to `Ci::Auto`:
+
+```rust
+use already_tested::{Ci, Options, create_claim};
+
+let mut options = Options::new(".", ".github/workflows/test.yml", "test-linux");
+options.ci = Ci::GitHubActions;
+let claim = create_claim(&options)?;
+```
+
+`Ci::Auto.resolve()` returns `Ci::GitHubActions`. The existing claim and verification functions apply this policy without fetching data or running tests.
+
 ## Create a Claim
 
 Run your actual complete checks, commit the tested files, then generate a claim:
@@ -69,6 +94,7 @@ already-tested claim --workflow <path> [--check <name-or-glob>] [options]
 
 | Option | Meaning |
 | --- | --- |
+| `--ci <system>` | `auto` (default) or `github-actions`; automatic selection resolves to GitHub Actions |
 | `--workflow <path>` | Required tracked `.yml`/`.yaml` file directly under `.github/workflows/`; paths are repository-relative |
 | `--check <name-or-glob>` | Named check or glob; defaults to `*` when omitted |
 | `--files <pattern>` | Repeat to select tracked files; omitted means all tracked files |
@@ -155,3 +181,9 @@ These exit codes apply only to `verify`; claim generation and the Action retain 
 `skip` is false and `matched_check` is null for no match or an error. Error reports need not include workflow/check fields because argument parsing may have failed. Without `--json`, verdicts go to stdout and errors go to stderr.
 
 A non-match cannot identify which file changed or distinguish a content change from a changed selection policy. Claims contain a combined digest, not a file manifest, so the verifier does not guess. Display metadata is not evidence that tests ran.
+
+## CI Adapters
+
+`already-tested ci` publishes a skip decision through the selected CI system. It accepts `--ci`, `--workflow`, `--check`, repeated `--files`, and `--body-file`; claim display options and `--json` are not supported.
+
+For GitHub Actions, the event supplies source, description, and executing workflow; omitted check/file options use the Action inputs. An explicit workflow must match the executing workflow. `already-tested action` remains a fixed GitHub Actions entry point for compatibility with existing binary releases and wrappers.

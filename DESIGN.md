@@ -6,7 +6,9 @@ Trusted PR-description claims avoid duplicate CI against matching committed sour
 
 The stable interfaces are `already-tested claim`, `already-tested verify`, the v1 claim/hash protocol, and Action inputs `check`/`files` with string output `skip=true` or `skip=false`. Project languages and toolchains are independent of this implementation. The JavaScript predecessor is [already-tested-js](https://github.com/dblock/already-tested-js).
 
-Rust implements the shared library, CLI, and `already-tested action` adapter. Git 2.29+ is the only external runtime command. No Node/npm, Rust runtime, network service, automatic test execution, or test-runner adapter is required by the executable.
+Rust implements the shared library, CLI, and CI adapters. `already-tested ci` is the neutral CI entry point; `already-tested action` remains a fixed GitHub Actions compatibility entry point, including for wrappers selecting older binary releases. Git 2.29+ is the only external runtime command. No Node/npm, Rust runtime, network service, automatic test execution, or test-runner adapter is required by the executable.
+
+`Options.ci` and CLI `--ci` share `auto` and `github-actions` selection. The Rust `Ci` type defaults to `Auto`, which currently resolves to GitHub Actions, the only supported system. Selection controls workflow validation and adapter routing, not canonical claim bytes or hash framing. It does not infer a system from remotes, workflow filenames, or repository contents.
 
 ## CLI and Claim Format
 

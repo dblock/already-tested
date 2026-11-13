@@ -13,6 +13,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 mod check;
+mod ci;
+
+pub use ci::Ci;
 
 pub const PREFIX: &str = "<!-- already-tested:v1 ";
 const LIMIT: u64 = 64 * 1024 * 1024;
@@ -45,6 +48,7 @@ fn fail<T>(message: impl Into<String>) -> Result<T> {
 #[derive(Clone, Debug)]
 pub struct Options {
     pub cwd: PathBuf,
+    pub ci: Ci,
     pub workflow: String,
     pub check: String,
     pub files: Vec<String>,
@@ -60,6 +64,7 @@ impl Options {
     ) -> Self {
         Self {
             cwd: cwd.into(),
+            ci: Ci::Auto,
             workflow: workflow.into(),
             check: check.into(),
             files: Vec::new(),
@@ -216,6 +221,7 @@ struct Snapshot {
 }
 
 fn validate_identity(options: &Options) -> Result<check::Scope> {
+    options.ci.resolve()?;
     if !Regex::new(r"^\.github/workflows/[^/\\\x00\r\n]+\.ya?ml$")
         .unwrap()
         .is_match(&options.workflow)
